@@ -1,0 +1,19 @@
+{
+  "name": "schulcloud-exporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "sync": "node src/cli.mjs import",
+    "serve": "node src/cli.mjs serve",
+    "export": "node src/cli.mjs export",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "stashcat-api": "github:dclausen01/stashcat-api#8c179a6fba802019f7ed09b2419a68b7c0c458d2"
+  },
+  "packageManager": "pnpm@11.11.0"
+}

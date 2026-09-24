@@ -1,0 +1,4 @@
+node_modules/
+archive-data/
+.env
+.DS_Store
