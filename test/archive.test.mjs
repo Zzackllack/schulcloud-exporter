@@ -67,6 +67,14 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
     assert.equal(data.messages[0].text, "Eine alte Nachricht");
     assert.equal(data.messages[0].sender_name, "Ada Lovelace");
     assert.equal(data.messages[0].files[0].name, "plan.pdf");
+    const summary = await fetch(`${base}/api/summary`);
+    assert.equal((await summary.json()).messages, 1);
+    const exportResponse = await fetch(`${base}/api/chats/channel/7/export`);
+    assert.equal((await exportResponse.json()).messages.length, 1);
+    const viewer = await fetch(base);
+    assert.equal(viewer.status, 200);
+    assert.match(await viewer.text(), /Schulcloud Archiv/);
+    assert.match(viewer.headers.get("content-security-policy"), /default-src 'none'/);
     const write = await fetch(`${base}/api/chats`, { method: "POST" });
     assert.equal(write.status, 405);
   } finally {
