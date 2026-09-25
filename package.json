@@ -8,12 +8,31 @@
   },
   "scripts": {
     "sync": "node src/cli.mjs import",
-    "serve": "node src/cli.mjs serve",
+    "serve": "pnpm build && node src/cli.mjs serve",
+    "dev": "vite --host 127.0.0.1",
+    "dev:api": "node src/cli.mjs serve",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "export": "node src/cli.mjs export",
-    "test": "node --test"
+    "test": "pnpm build && node --test"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.9",
+    "lucide-react": "^1.48.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0",
     "stashcat-api": "github:dclausen01/stashcat-api#8c179a6fba802019f7ed09b2419a68b7c0c458d2"
   },
-  "packageManager": "pnpm@11.11.0"
+  "packageManager": "pnpm@11.11.0",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
 }
