@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Schulcloud Exporter</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail" aria-label="Archiv-Navigation">
+        <div class="brand">☁</div>
+        <div class="rail-icon active" title="Chats">▣</div>
+        <div class="rail-spacer"></div>
+        <div class="rail-foot">Archiv</div>
+      </aside>
+      <aside class="sidebar">
+        <header class="sidebar-header">
+          <div>
+            <p class="eyebrow">LOKAL GESPEICHERT</p>
+            <h1>Chats</h1>
+          </div>
+          <span id="chat-total" class="count"></span>
+        </header>
+        <label class="search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            id="search"
+            type="search"
+            placeholder="Chats suchen"
+            autocomplete="off"
+          />
+        </label>
+        <div class="filters" aria-label="Chatfilter">
+          <button class="filter active" data-filter="all">Alle</button>
+          <button class="filter" data-filter="channel">Channels</button>
+          <button class="filter" data-filter="conversation">
+            Konversationen
+          </button>
+        </div>
+        <div id="chat-list" class="chat-list" role="list"></div>
+        <footer id="summary" class="sidebar-footer">
+          Archiv wird geladen …
+        </footer>
+      </aside>
+      <main class="conversation">
+        <header class="conversation-header">
+          <div class="chat-heading">
+            <span id="header-icon" class="chat-icon">☁</span>
+            <div>
+              <h2 id="header-title">Schulcloud Exporter</h2>
+              <p id="header-subtitle">Wähle links einen Chat aus.</p>
+            </div>
+          </div>
+          <a id="json-link" class="download hidden" href="#" download
+            >JSON herunterladen</a
+          >
+        </header>
+        <div id="notice" class="notice hidden" role="status"></div>
+        <div id="timeline" class="timeline">
+          <div class="empty">
+            <div class="empty-icon">✦</div>
+            <h3>Deine Unterhaltungen, an einem Ort.</h3>
+            <p>
+              Nachrichten und Dateien bleiben lokal gespeichert. Hier kannst du
+              sie in Ruhe wieder durchgehen.
+            </p>
+          </div>
+        </div>
+        <footer class="composer">
+          Schreibgeschütztes Archiv · Es werden keine Nachrichten versendet.
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
