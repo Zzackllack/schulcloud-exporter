@@ -76,6 +76,11 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
     assert.equal(viewer.status, 200);
     assert.match(await viewer.text(), /Schulcloud Archiv/);
     assert.match(viewer.headers.get("content-security-policy"), /default-src 'none'/);
+    const favicon = await fetch(`${base}/favicon.svg`);
+    assert.equal(favicon.status, 200);
+    assert.equal(favicon.headers.get("content-type"), "image/svg+xml");
+    assert.match(await favicon.text(), /<svg/);
+    assert.equal((await fetch(`${base}/assets/nope.svg`)).status, 404);
     const write = await fetch(`${base}/api/chats`, { method: "POST" });
     assert.equal(write.status, 405);
   } finally {

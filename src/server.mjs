@@ -110,20 +110,11 @@ export function createApp(db, directory) {
     }
   });
 
-  app.get("/assets/:name", async (context) => {
-    const name = context.req.param("name");
-    if (!/^[\w.-]+$/.test(name)) return context.json({ error: "Nicht gefunden" }, 404);
-    const type = assetTypes.get(name.slice(name.lastIndexOf(".")));
-    if (!type) return context.json({ error: "Nicht gefunden" }, 404);
-    try {
-      const bytes = await readFile(join(webDirectory, "assets", name));
-      context.header("Content-Type", type);
-      return context.body(bytes);
-    } catch (error) {
-      if (error.code === "ENOENT") return context.json({ error: "Nicht gefunden" }, 404);
-      throw error;
-    }
-  });
+  app.get("/assets/:name", (context) =>
+    serveFile(context, "assets", context.req.param("name")),
+  );
+  // Vite copies public/ to the build root, not into dist/assets/.
+  app.get("/favicon.svg", (context) => serveFile(context, ".", "favicon.svg"));
   app.get("/", serveIndex);
   app.get("/chats/:type/:id", serveIndex);
   return app;
@@ -133,6 +124,20 @@ function findChat(db, context) {
   const { type, id } = context.req.param();
   if (type !== "channel" && type !== "conversation") return null;
   return db.prepare("SELECT * FROM chats WHERE type=? AND id=?").get(type, id);
+}
+
+async function serveFile(context, directory, name) {
+  if (!/^[\w.-]+$/.test(name)) return context.json({ error: "Nicht gefunden" }, 404);
+  const type = assetTypes.get(name.slice(name.lastIndexOf(".")));
+  if (!type) return context.json({ error: "Nicht gefunden" }, 404);
+  try {
+    const bytes = await readFile(join(webDirectory, directory, name));
+    context.header("Content-Type", type);
+    return context.body(bytes);
+  } catch (error) {
+    if (error.code === "ENOENT") return context.json({ error: "Nicht gefunden" }, 404);
+    throw error;
+  }
 }
 
 async function serveIndex(context) {
