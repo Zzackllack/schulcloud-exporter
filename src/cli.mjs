@@ -4,7 +4,11 @@ import { importArchive } from "./importer.mjs";
 import { startServer } from "./server.mjs";
 import { readCredentials } from "./credentials.mjs";
 import { exportJson } from "./export.mjs";
-import { repairChatTitles, repairTimestamps } from "./repair.mjs";
+import {
+  repairChatTitles,
+  repairDeletions,
+  repairTimestamps,
+} from "./repair.mjs";
 
 const command = process.argv[2];
 const directory = resolve(process.env.SCHULCLOUD_ARCHIVE_DIR || "archive-data");
@@ -33,13 +37,16 @@ if (command === "import") {
   try {
     repairTimestamps(db);
     repairChatTitles(db);
+    repairDeletions(db);
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
   }
   db.close();
 } else {
-  console.error("Aufruf: pnpm sync | pnpm serve | pnpm export | pnpm repair");
+  console.error(
+    "Aufruf: pnpm sync | pnpm serve | pnpm dev | pnpm export | pnpm repair",
+  );
   db.close();
   process.exitCode = 2;
 }

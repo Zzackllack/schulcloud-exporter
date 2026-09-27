@@ -1,6 +1,7 @@
-import { Download, FileText, ImageOff, KeyRound, LockKeyhole, LogIn, LogOut } from "lucide-react";
+import { Download, FileText, ImageOff, KeyRound, LockKeyhole, LogIn, LogOut, Trash2, Unlink } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "./avatar";
+import { MessageText } from "./markdown";
 import { time } from "../format";
 import type { ArchiveFile, Message as ArchiveMessage } from "../types";
 
@@ -20,9 +21,15 @@ const systemEvents: Record<string, { label: string; icon: LucideIcon }> = {
   key_resetted: { label: "hat den Schlüssel zurückgesetzt", icon: KeyRound },
 };
 
+// Why a message has a sender but nothing to show. Each of these is a real gap
+// in the archive rather than an empty post, and saying so is more useful than an
+// empty bubble.
+const gaps: { test: (m: ArchiveMessage) => boolean; label: string; icon: LucideIcon }[] = [
+  { test: (m) => m.deleted, label: "Nachricht gelöscht", icon: Trash2 },
+  { test: (m) => m.attachment_missing, label: "Anhang nicht mehr verfügbar", icon: Unlink },
+];
+
 export function Message({ message, own }: MessageProps) {
-  // Only treat a row as a system event when it really has nothing to show, so
-  // real content is never hidden behind a label.
   const event = message.text || message.files.length ? null : systemEvents[message.kind];
   if (event) {
     const Icon = event.icon;
@@ -40,21 +47,27 @@ export function Message({ message, own }: MessageProps) {
     );
   }
 
+  const gap = gaps.find((entry) => entry.test(message));
   const unverified = message.decryption_state === "unverified";
   return (
-    <article className={`message ${own ? "own" : ""}`}>
+    <article className={`message ${own ? "own" : ""} ${message.deleted ? "removed" : ""}`}>
       {!own ? <Avatar title={message.sender_name} hash={message.sender_avatar} small /> : null}
       <div className="message-bubble">
         {!own ? <div className="message-sender">{message.sender_name}</div> : null}
         {unverified ? (
           <p className="message-warning"><LockKeyhole size={15} />Verschlüsselter Inhalt konnte nicht verifiziert werden.</p>
-        ) : message.text ? <p className="message-text">{message.text}</p> : null}
+        ) : message.text ? <MessageText text={message.text} /> : null}
+        {gap ? <GapNote icon={gap.icon} label={gap.label} /> : null}
         {message.files.length ? <div className="attachments">{message.files.map((file) => <Attachment key={file.id} file={file} />)}</div> : null}
         {unverified ? <p className="raw-note">Der Originalwert bleibt im JSON-Export erhalten.</p> : null}
         <time className="message-time" dateTime={message.created_at ?? undefined}>{time(message.created_at)}</time>
       </div>
     </article>
   );
+}
+
+function GapNote({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return <p className="message-gap"><Icon size={15} aria-hidden="true" />{label}</p>;
 }
 
 function Attachment({ file }: { file: ArchiveFile }) {

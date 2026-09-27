@@ -36,10 +36,14 @@ export interface Message {
   /** Falls back to "Unbekannte Person" server-side; test sender_id instead. */
   sender_name: string;
   sender_avatar: string | null;
+  /** The sender's account was deleted, so no name is recoverable. */
+  sender_deleted: boolean;
   text: string | null;
   created_at: string | null;
   /** "message" for real posts, otherwise a system event like "joined". */
   kind: string;
+  deleted: boolean;
+  attachment_missing: boolean;
   decryption_state: string;
   files: ArchiveFile[];
 }

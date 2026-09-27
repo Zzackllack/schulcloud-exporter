@@ -28,6 +28,7 @@ export function openArchive(directory) {
       id TEXT PRIMARY KEY,
       display_name TEXT NOT NULL,
       avatar_hash TEXT,
+      deleted TEXT,
       raw_json TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS messages (
@@ -40,6 +41,10 @@ export function openArchive(directory) {
       kind TEXT,
       reply_to_id TEXT,
       decryption_state TEXT NOT NULL,
+      -- Timestamps the API scrubbed server-side; NULL means not deleted.
+      deleted TEXT,
+      -- The API advertised an attachment but shipped no file metadata.
+      attachment_missing INTEGER NOT NULL DEFAULT 0,
       raw_json TEXT NOT NULL,
       FOREIGN KEY (chat_type, chat_id) REFERENCES chats(type, id),
       FOREIGN KEY (sender_id) REFERENCES people(id)
@@ -78,7 +83,25 @@ export function openArchive(directory) {
       value TEXT NOT NULL
     );
   `);
+  migrate(db);
   return db;
+}
+
+// CREATE TABLE IF NOT EXISTS leaves an existing archive untouched, so columns
+// added after a database was first created have to be applied separately.
+function migrate(db) {
+  const added = [];
+  for (const [table, column, definition] of [
+    ["people", "deleted", "TEXT"],
+    ["messages", "deleted", "TEXT"],
+    ["messages", "attachment_missing", "INTEGER NOT NULL DEFAULT 0"],
+  ]) {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (columns.some((entry) => entry.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    added.push(`${table}.${column}`);
+  }
+  return added;
 }
 
 export function saveChat(db, type, chat, archived = false, ownId = null) {
@@ -176,10 +199,16 @@ export function saveMessage(db, type, chatId, message) {
       [sender.first_name, sender.last_name].filter(Boolean).join(" ") ||
       `Nutzer ${senderId}`;
     db.prepare(
-      `INSERT INTO people (id, display_name, raw_json)
-      VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET
-      display_name=excluded.display_name, raw_json=excluded.raw_json`,
-    ).run(senderId, displayName, JSON.stringify(sender));
+      `INSERT INTO people (id, display_name, deleted, raw_json)
+      VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
+      display_name=excluded.display_name, deleted=excluded.deleted,
+      raw_json=excluded.raw_json`,
+    ).run(
+      senderId,
+      displayName,
+      sender.deleted == null ? null : String(sender.deleted),
+      JSON.stringify(sender),
+    );
   }
   // The upstream client silently keeps ciphertext when decryption fails.
   const decryptionState = message.encrypted
@@ -189,16 +218,22 @@ export function saveMessage(db, type, chatId, message) {
         ? "decrypted"
         : "unverified"
     : "plain";
+  // `has_file_attached` is set even when the API ships no file metadata, which
+  // is how an unavailable attachment shows up as a message with no content.
+  const attachmentMissing =
+    message.has_file_attached && !(message.files || []).length ? 1 : 0;
   db.prepare(
     `INSERT INTO messages
     (id, chat_type, chat_id, sender_id, text, created_at, kind,
-     reply_to_id, decryption_state, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     reply_to_id, decryption_state, deleted, attachment_missing, raw_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       sender_id=excluded.sender_id, text=excluded.text,
       created_at=excluded.created_at, kind=excluded.kind,
       reply_to_id=excluded.reply_to_id,
       decryption_state=excluded.decryption_state,
+      deleted=excluded.deleted,
+      attachment_missing=excluded.attachment_missing,
       raw_json=excluded.raw_json`,
   ).run(
     String(message.id),
@@ -210,6 +245,8 @@ export function saveMessage(db, type, chatId, message) {
     message.kind || message.type || "message",
     message.reply_to_id ? String(message.reply_to_id) : null,
     decryptionState,
+    message.deleted == null ? null : String(message.deleted),
+    attachmentMissing,
     JSON.stringify(message),
   );
   for (const file of message.files || []) {

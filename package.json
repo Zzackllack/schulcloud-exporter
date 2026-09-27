@@ -15,6 +15,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "export": "node src/cli.mjs export",
+    "repair": "node src/cli.mjs repair",
     "test": "pnpm build && node --test"
   },
   "dependencies": {
@@ -23,7 +24,9 @@
     "lucide-react": "^1.48.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
     "react-router": "^8.4.0",
+    "remark-gfm": "^4.0.1",
     "stashcat-api": "github:dclausen01/stashcat-api#8c179a6fba802019f7ed09b2419a68b7c0c458d2"
   },
   "packageManager": "pnpm@11.11.0",

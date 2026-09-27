@@ -59,6 +59,7 @@ export function createApp(db, directory) {
     const before = context.req.query("before");
     const limit = Math.min(Math.max(Number(context.req.query("limit")) || 100, 1), 200);
     const selection = `SELECT m.*, p.display_name AS sender_name, p.avatar_hash AS sender_avatar,
+      p.deleted AS sender_deleted,
       (SELECT json_group_array(json_object('id', f.id, 'name', f.name,
         'mime', f.mime, 'size_bytes', f.size_bytes,
         'blob_hash', f.blob_hash, 'status', f.status))
@@ -161,15 +162,21 @@ function encodeRFC5987ValueChars(value) {
 }
 
 function toPublicMessage(row) {
+  // A deleted account has its name scrubbed by the API, so say so rather than
+  // showing the "Nutzer <id>" placeholder as if it were a real name.
+  const senderDeleted = Boolean(row.sender_deleted);
   return {
     id: row.id,
     sender_id: row.sender_id,
-    sender_name: row.sender_name || "Unbekannte Person",
+    sender_name: senderDeleted ? "Gelöschtes Konto" : row.sender_name || "Unbekannte Person",
     sender_avatar: row.sender_avatar,
+    sender_deleted: senderDeleted,
     text: row.text,
     created_at: row.created_at,
     kind: row.kind,
     reply_to_id: row.reply_to_id,
+    deleted: Boolean(row.deleted),
+    attachment_missing: Boolean(row.attachment_missing),
     decryption_state: row.decryption_state,
     files: JSON.parse(row.files_json || "[]"),
   };

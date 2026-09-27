@@ -3,10 +3,11 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import { openArchive, saveChat, saveMessage } from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
-import { repairChatTitles, repairTimestamps } from "../src/repair.mjs";
+import { repairChatTitles, repairDeletions, repairTimestamps } from "../src/repair.mjs";
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
@@ -260,6 +261,131 @@ test("repairs placeholder conversation titles from the stored response", async (
     "Elternabend",
   );
   db.close();
+});
+
+test("records deleted messages, missing attachments and deleted accounts", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "gaps", name: "Lücken", encrypted: false });
+  saveMessage(db, "channel", "gaps", {
+    id: "gone",
+    text: null,
+    deleted: "1782824371",
+    sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+  });
+  saveMessage(db, "channel", "gaps", {
+    id: "no-file",
+    has_file_attached: true,
+    files: [],
+    sender: { id: "6", first_name: "Grace", last_name: "Hopper", deleted: "1705186840" },
+  });
+  saveMessage(db, "channel", "gaps", {
+    id: "intact",
+    text: "Alles gut",
+    files: [{ id: "9", name: "plan.pdf" }],
+    sender: { id: "7", first_name: "Alan", last_name: "Turing" },
+  });
+
+  const read = (id) => db.prepare("SELECT deleted, attachment_missing FROM messages WHERE id=?").get(id);
+  assert.equal(read("gone").deleted, "1782824371");
+  assert.equal(read("gone").attachment_missing, 0);
+  // Advertised as attached but the API shipped no metadata: an import gap.
+  assert.equal(read("no-file").attachment_missing, 1);
+  assert.equal(read("no-file").deleted, null);
+  assert.equal(read("intact").attachment_missing, 0);
+
+  assert.equal(
+    db.prepare("SELECT deleted FROM people WHERE id=?").get("6").deleted,
+    "1705186840",
+  );
+  assert.equal(db.prepare("SELECT deleted FROM people WHERE id=?").get("7").deleted, null);
+  db.close();
+});
+
+test("backfills deletion flags from the stored response", async () => {
+  // This file shares one temp archive, so assert on the rows created here
+  // rather than on the totals repairDeletions reports.
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "old", name: "Alt", encrypted: false });
+  // An archive written before the columns existed: flags are NULL.
+  saveMessage(db, "channel", "old", { id: "a", text: null, deleted: "1705186840" });
+  saveMessage(db, "channel", "old", { id: "b", has_file_attached: true, files: [] });
+  saveMessage(db, "channel", "old", { id: "c", text: "unverändert" });
+  db.prepare("UPDATE messages SET deleted=NULL, attachment_missing=0 WHERE id IN ('a','b','c')").run();
+
+  const result = repairDeletions(db, { log() {} });
+  assert.ok(result.deletedMessages >= 1);
+  assert.ok(result.missingAttachments >= 1);
+  const flag = (id) => db.prepare("SELECT deleted, attachment_missing FROM messages WHERE id=?").get(id);
+  assert.equal(flag("a").deleted, "1705186840");
+  assert.equal(flag("a").attachment_missing, 0);
+  assert.equal(flag("b").deleted, null);
+  assert.equal(flag("b").attachment_missing, 1);
+  // A normal message must stay untouched.
+  assert.equal(flag("c").deleted, null);
+  assert.equal(flag("c").attachment_missing, 0);
+  db.close();
+});
+
+test("adds the deletion columns to a database created by an older version", async () => {
+  const legacy = await mkdtemp(join(tmpdir(), "schulcloud-legacy-"));
+  const path = join(legacy, "archive.sqlite");
+  const old = new DatabaseSync(path);
+  // The schema as it looked before the deleted-state columns were added.
+  old.exec(`CREATE TABLE people (id TEXT PRIMARY KEY, display_name TEXT NOT NULL,
+      avatar_hash TEXT, raw_json TEXT NOT NULL);
+    CREATE TABLE messages (id TEXT PRIMARY KEY, chat_type TEXT NOT NULL,
+      chat_id TEXT NOT NULL, sender_id TEXT, text TEXT, created_at TEXT, kind TEXT,
+      reply_to_id TEXT, decryption_state TEXT NOT NULL, raw_json TEXT NOT NULL);`);
+  old.close();
+
+  const db = openArchive(legacy);
+  const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  assert.ok(columns("people").includes("deleted"), "people.deleted added");
+  assert.ok(columns("messages").includes("deleted"), "messages.deleted added");
+  assert.ok(columns("messages").includes("attachment_missing"), "messages.attachment_missing added");
+  // Re-opening must not fail or duplicate the columns.
+  db.close();
+  const again = openArchive(legacy);
+  assert.equal(
+    again.prepare("PRAGMA table_info(messages)").all().filter((c) => c.name === "deleted").length,
+    1,
+  );
+  again.close();
+  await rm(legacy, { recursive: true, force: true });
+});
+
+test("serves deletion state and names deleted accounts honestly", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "api-gaps", name: "API", encrypted: false });
+  saveMessage(db, "channel", "api-gaps", {
+    id: "d1",
+    text: null,
+    deleted: "1705186840",
+    sender: { id: "11", first_name: "Ada", last_name: "Lovelace" },
+  });
+  saveMessage(db, "channel", "api-gaps", {
+    id: "d2",
+    text: "Hallo",
+    sender: { id: "12", deleted: "1705186840" },
+  });
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const page = await (await fetch(`${base}/api/chats/channel/api-gaps/messages`)).json();
+    const [first, second] = page.messages;
+    assert.equal(first.deleted, true);
+    assert.equal(first.attachment_missing, false);
+    // The sender of the first message still has a name.
+    assert.equal(first.sender_name, "Ada Lovelace");
+    assert.equal(first.sender_deleted, false);
+    // The second sender's account was deleted, so no name is recoverable.
+    assert.equal(second.sender_deleted, true);
+    assert.equal(second.sender_name, "Gelöschtes Konto");
+  } finally {
+    server.close();
+    db.close();
+  }
 });
 
 test("loads older messages even when timestamps are missing", async () => {
