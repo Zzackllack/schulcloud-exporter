@@ -4,6 +4,7 @@ import { importArchive } from "./importer.mjs";
 import { startServer } from "./server.mjs";
 import { readCredentials } from "./credentials.mjs";
 import { exportJson } from "./export.mjs";
+import { repairTimestamps } from "./repair.mjs";
 
 const command = process.argv[2];
 const directory = resolve(process.env.SCHULCLOUD_ARCHIVE_DIR || "archive-data");
@@ -28,8 +29,16 @@ if (command === "import") {
     process.exitCode = 1;
   }
   db.close();
+} else if (command === "repair") {
+  try {
+    repairTimestamps(db);
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
+  db.close();
 } else {
-  console.error("Aufruf: pnpm sync | pnpm serve | pnpm export");
+  console.error("Aufruf: pnpm sync | pnpm serve | pnpm export | pnpm repair");
   db.close();
   process.exitCode = 2;
 }

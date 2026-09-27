@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { openArchive, saveChat, saveMessage } from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
+import { repairTimestamps } from "../src/repair.mjs";
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
@@ -95,6 +96,66 @@ test("prefers absolute created_at timestamps over relative time fields", async (
   });
   const row = db.prepare("SELECT created_at FROM messages WHERE id=?").get("43");
   assert.equal(row.created_at, "2024-01-02T03:04:05.000Z");
+  db.close();
+});
+
+test("reads stashcat micro_time as unix seconds, not microseconds", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "micro", name: "Mikrozeit", encrypted: false });
+  // Shape taken verbatim from a real api.stashcat.com response.
+  saveMessage(db, "channel", "micro", {
+    id: "44",
+    text: "Mit Mikrosekunden",
+    time: "1782042438",
+    micro_time: "1782042438.732",
+  });
+  const row = db.prepare("SELECT created_at FROM messages WHERE id=?").get("44");
+  assert.equal(row.created_at, "2026-06-21T11:47:18.732Z");
+  db.close();
+});
+
+test("falls back to whole-second time and rejects implausible units", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "fallback", name: "Fallback", encrypted: false });
+  saveMessage(db, "channel", "fallback", { id: "45", time: "1782042438" });
+  assert.equal(
+    db.prepare("SELECT created_at FROM messages WHERE id=?").get("45").created_at,
+    "2026-06-21T11:47:18.000Z",
+  );
+  // A value that only makes sense as milliseconds would land in the 16th
+  // century once multiplied by 1000, so it must be discarded instead of stored.
+  saveMessage(db, "channel", "fallback", { id: "46", micro_time: "94668480000000" });
+  assert.equal(
+    db.prepare("SELECT created_at FROM messages WHERE id=?").get("46").created_at,
+    null,
+  );
+  db.close();
+});
+
+test("repairs archived timestamps from the preserved API response", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "repair", name: "Reparatur", encrypted: false });
+  const original = {
+    id: "47",
+    text: "Alte Zeit",
+    time: "1782042438",
+    micro_time: "1782042438.732",
+  };
+  saveMessage(db, "channel", "repair", original);
+  // Simulate the archive written by the buggy unit conversion.
+  db.prepare("UPDATE messages SET created_at=? WHERE id=?").run(
+    "1970-01-01T00:29:42.042Z",
+    "47",
+  );
+
+  const result = repairTimestamps(db, { log() {} });
+  assert.equal(result.changed, 1);
+  assert.equal(
+    db.prepare("SELECT created_at FROM messages WHERE id=?").get("47").created_at,
+    "2026-06-21T11:47:18.732Z",
+  );
+  // A second run has nothing left to do.
+  assert.equal(repairTimestamps(db, { log() {} }).changed, 0);
   db.close();
 });
 

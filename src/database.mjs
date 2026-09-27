@@ -124,21 +124,28 @@ function conversationTitle(chat, ownId) {
     .join(", ");
 }
 
-function messageDate(message) {
+// A school archive spans 2019 to today; anything outside this window means we
+// misread the unit again and would rather store NULL than a wrong date.
+const MIN_PLAUSIBLE_MS = Date.UTC(1990, 0, 1);
+const MAX_PLAUSIBLE_MS = Date.UTC(2100, 0, 1);
+
+export function messageDate(message) {
   const createdAt = message.created_at || message.created;
   if (typeof createdAt === "string" && createdAt.trim()) {
     const parsed = new Date(createdAt);
     if (!Number.isNaN(parsed.valueOf())) return parsed.toISOString();
   }
 
-  const micros = Number(message.micro_time);
-  if (Number.isFinite(micros) && micros > 0) {
-    return new Date(micros / 1000).toISOString();
-  }
-
-  const seconds = Number(message.time);
-  if (Number.isFinite(seconds) && seconds > 0) {
-    return new Date(seconds * 1000).toISOString();
+  // Despite the name (the upstream client documents it as "microsecond
+  // precision"), stashcat's `micro_time` is unix *seconds* with a fractional
+  // part: 1782042438.732 -> 2026-06-21T11:47:18.732Z. `time` is the same value
+  // rounded to whole seconds. Treat both as seconds.
+  for (const value of [message.micro_time, message.time]) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) continue;
+    const ms = seconds * 1000;
+    if (ms < MIN_PLAUSIBLE_MS || ms >= MAX_PLAUSIBLE_MS) continue;
+    return new Date(ms).toISOString();
   }
 
   return null;
