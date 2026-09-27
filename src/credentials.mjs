@@ -25,18 +25,33 @@ function hiddenQuestion(prompt) {
   return new Promise((resolve, reject) => {
     let value = "";
     const input = process.stdin;
-    process.stdout.write(prompt);
-    input.setRawMode(true);
-    input.resume();
-    const finish = (error) => {
-      input.off("data", onData);
-      input.setRawMode(false);
+    let rawModeEnabled = false;
+    let onData = null;
+    const cleanup = () => {
+      if (onData) input.off("data", onData);
+      if (rawModeEnabled) {
+        input.setRawMode(false);
+        rawModeEnabled = false;
+      }
       input.pause();
       process.stdout.write("\n");
+    };
+    process.stdout.write(prompt);
+    try {
+      input.setRawMode(true);
+      rawModeEnabled = true;
+      input.resume();
+    } catch (error) {
+      cleanup();
+      reject(error);
+      return;
+    }
+    const finish = (error) => {
+      cleanup();
       if (error) reject(error);
       else resolve(value);
     };
-    const onData = (buffer) => {
+    onData = (buffer) => {
       for (const character of buffer.toString("utf8")) {
         if (character === "\r" || character === "\n") return finish();
         if (character === "\u0003")

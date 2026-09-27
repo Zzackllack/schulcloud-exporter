@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, ArrowUp } from "lucide-react";
-import { loadMessages } from "../api";
+import { loadMessages, MESSAGE_PAGE_SIZE } from "../api";
 import { fullDate } from "../format";
 import type { Chat, Message as ArchiveMessage } from "../types";
 import { Message } from "./message";
@@ -28,7 +28,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     loadMessages(chat.type, chat.id, null, controller.signal)
       .then((page) => {
         setMessages(page.messages);
-        setHasMore(page.messages.length === 100);
+        setHasMore(page.messages.length === MESSAGE_PAGE_SIZE);
         requestAnimationFrame(() => {
           if (!controller.signal.aborted && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
         });
@@ -56,7 +56,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
       const page = await loadMessages(chat.type, chat.id, messages[0] ?? null, controller.signal);
       if (controller.signal.aborted) return;
       setMessages((current) => [...page.messages, ...current]);
-      setHasMore(page.messages.length === 100);
+      setHasMore(page.messages.length === MESSAGE_PAGE_SIZE);
       requestAnimationFrame(() => {
         if (element && !controller.signal.aborted) element.scrollTop = previousTop + element.scrollHeight - previousHeight;
       });

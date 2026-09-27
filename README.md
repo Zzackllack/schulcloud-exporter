@@ -25,7 +25,7 @@ Die Webansicht verwendet React, React Router, Tailwind CSS und Vite; die lokale,
 
 Für die Entwicklung zwei Terminals öffnen: `pnpm dev:api` für die API und `pnpm dev` für Vite auf <http://127.0.0.1:5173>. `pnpm serve` erstellt zuerst den Produktions-Build. `pnpm typecheck` und `pnpm test` prüfen Typen und Archiv/API-Verhalten.
 
-`pnpm export` erzeugt JSONL-Dateien für die normalisierten Tabellen in `archive-data/json-export/`. Der JSON-Download in der Webansicht exportiert jeweils einen Chat. Sichere für eine vollständige lokale Kopie das gesamte Verzeichnis `archive-data/`. Ein unterbrochener Import kann erneut gestartet werden; gespeicherte Nachrichten und Dateien werden wiederverwendet.
+`pnpm export` erzeugt JSONL-Dateien für die normalisierten Tabellen in `archive-data/json-export/`, einschließlich `metadata` und `import_runs`. Der JSON-Download in der Webansicht exportiert jeweils einen Chat. Sichere für eine vollständige lokale Kopie das gesamte Verzeichnis `archive-data/`. Ein unterbrochener Import kann erneut gestartet werden; gespeicherte Nachrichten und Dateien werden wiederverwendet.
 
 ## Grenzen
 
@@ -62,7 +62,7 @@ The viewer uses React, React Router, Tailwind CSS, and Vite. Hono serves the loc
 
 For development, run `pnpm dev:api` and `pnpm dev` in separate terminals, then open <http://127.0.0.1:5173>. `pnpm serve` builds the production viewer first. Use `pnpm typecheck` and `pnpm test` to check types and archive/API behavior.
 
-`pnpm export` writes JSONL files for the normalized tables to `archive-data/json-export/`. The viewer can download JSON for an individual chat. Back up the entire `archive-data/` directory to preserve the full local archive. You can rerun an interrupted import; saved messages and files are reused.
+`pnpm export` writes JSONL files for the normalized tables to `archive-data/json-export/`, including `metadata` and `import_runs`. The viewer can download JSON for an individual chat. Back up the entire `archive-data/` directory to preserve the full local archive. You can rerun an interrupted import; saved messages and files are reused.
 
 ## Limitations
 

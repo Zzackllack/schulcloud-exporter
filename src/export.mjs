@@ -34,6 +34,8 @@ export async function exportJson(db, directory) {
       "SELECT * FROM message_files ORDER BY message_id, file_id",
     ],
     ["blobs", "SELECT * FROM blobs ORDER BY hash"],
+    ["metadata", "SELECT * FROM metadata ORDER BY key"],
+    ["import_runs", "SELECT * FROM import_runs ORDER BY id"],
   ];
   for (const [name, query] of datasets) {
     await writeJsonLines(

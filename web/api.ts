@@ -1,5 +1,7 @@
 import type { Chat, ChatType, Message, MessagePage, Summary } from "./types";
 
+export const MESSAGE_PAGE_SIZE = 100;
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { signal });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -21,7 +23,7 @@ export function loadMessages(
   cursor: Message | null,
   signal: AbortSignal,
 ) {
-  const params = new URLSearchParams({ limit: "100" });
+  const params = new URLSearchParams({ limit: String(MESSAGE_PAGE_SIZE) });
   if (cursor) {
     params.set("before", cursor.created_at ?? "");
     params.set("before_id", cursor.id);

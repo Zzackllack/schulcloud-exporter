@@ -90,7 +90,9 @@ export async function importArchive(
     ).run(new Date().toISOString(), String(error), runId);
     throw error;
   } finally {
-    client.logout();
+    await Promise.resolve(client.logout()).catch((error) => {
+      output.error(`Logout fehlgeschlagen: ${error}`);
+    });
   }
 }
 

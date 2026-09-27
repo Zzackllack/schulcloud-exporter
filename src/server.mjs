@@ -84,7 +84,10 @@ export function createApp(db, directory) {
     const { type, id } = context.req.param();
     const messages = db.prepare(`SELECT raw_json FROM messages
       WHERE chat_type=? AND chat_id=? ORDER BY created_at, id`).all(type, id);
-    context.header("Content-Disposition", `attachment; filename="${type}-${encodeURIComponent(id)}.json"`);
+    context.header(
+      "Content-Disposition",
+      buildContentDisposition(`${type}-${id}.json`),
+    );
     return context.json({
       format: "schulcloud-archive-v1",
       chat: JSON.parse(chat.raw_json),
@@ -136,6 +139,20 @@ async function serveIndex(context) {
   const bytes = await readFile(join(webDirectory, "index.html"));
   context.header("Content-Type", "text/html; charset=utf-8");
   return context.body(bytes);
+}
+
+function buildContentDisposition(filename) {
+  const asciiFallback = filename
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/[\\"]/g, "_")
+    .trim() || "download.json";
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeRFC5987ValueChars(filename)}`;
+}
+
+function encodeRFC5987ValueChars(value) {
+  return encodeURIComponent(value)
+    .replace(/['()]/g, escape)
+    .replace(/\*/g, "%2A");
 }
 
 function toPublicMessage(row) {

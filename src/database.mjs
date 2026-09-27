@@ -190,6 +190,8 @@ export function saveMessage(db, type, chatId, message) {
   for (const file of message.files || []) {
     if (file.id == null) continue;
     const fileId = String(file.id);
+    const sizeValue = file.size_bytes ?? file.size_byte;
+    const sizeBytes = sizeValue == null ? null : Number(sizeValue);
     db.prepare(
       `INSERT INTO files (id, name, mime, size_bytes, raw_json)
       VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
@@ -199,7 +201,7 @@ export function saveMessage(db, type, chatId, message) {
       fileId,
       file.name || fileId,
       file.mime || null,
-      Number(file.size_byte) || null,
+      Number.isFinite(sizeBytes) ? sizeBytes : null,
       JSON.stringify(file),
     );
     db.prepare(
