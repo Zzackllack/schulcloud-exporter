@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { openArchive, saveChat, saveMessage } from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
-import { repairTimestamps } from "../src/repair.mjs";
+import { repairChatTitles, repairTimestamps } from "../src/repair.mjs";
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
@@ -161,6 +161,104 @@ test("repairs archived timestamps from the preserved API response", async () => 
   );
   // A second run has nothing left to do.
   assert.equal(repairTimestamps(db, { log() {} }).changed, 0);
+  db.close();
+});
+
+test("titles conversations from the members list the API actually sends", async () => {
+  const db = openArchive(directory);
+  // Shape taken from a real api.stashcat.com conversation response: the
+  // participants arrive as `members`, and the owner is not among them.
+  saveChat(
+    db,
+    "conversation",
+    {
+      id: "members",
+      user_count: 4,
+      members: [
+        { id: "1", first_name: "Christopher", last_name: "Kern" },
+        { id: "2", first_name: "Katharina", last_name: "Fechner" },
+        { id: "3", first_name: "Florian", last_name: "Baumert" },
+      ],
+    },
+    false,
+    "9",
+  );
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='members'").get().title,
+    "Christopher Kern, Katharina Fechner, Florian Baumert",
+  );
+
+  // A one-to-one chat collapses to the other person's name.
+  saveChat(
+    db,
+    "conversation",
+    { id: "dm", user_count: 2, members: [{ id: "2", first_name: "Tobias", last_name: "Lukaschewitz" }] },
+    false,
+    "9",
+  );
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='dm'").get().title,
+    "Tobias Lukaschewitz",
+  );
+  db.close();
+});
+
+test("keeps a renamed conversation and tolerates a missing member list", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "conversation", { id: "renamed", name: "Elternabend", members: [{ id: "2", first_name: "X", last_name: "Y" }] }, false, "9");
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='renamed'").get().title,
+    "Elternabend",
+  );
+  // No members at all: fall back to the id rather than inventing a name.
+  saveChat(db, "conversation", { id: "empty" }, false, "9");
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='empty'").get().title,
+    "Konversation empty",
+  );
+  // A deleted member keeps the "Nutzer <id>" label used for message senders.
+  saveChat(
+    db,
+    "conversation",
+    { id: "deleted", members: [{ id: "2", first_name: null, last_name: null, deleted: "1782999466" }] },
+    false,
+    "9",
+  );
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='deleted'").get().title,
+    "Nutzer 2",
+  );
+  db.close();
+});
+
+test("repairs placeholder conversation titles from the stored response", async () => {
+  const db = openArchive(directory);
+  db.prepare("INSERT INTO metadata (key, value) VALUES ('own_user_id', '9')").run();
+  saveChat(
+    db,
+    "conversation",
+    { id: "stale", members: [{ id: "2", first_name: "Katharina", last_name: "Fechner" }] },
+    false,
+    "9",
+  );
+  db.prepare("UPDATE chats SET title=? WHERE type='conversation' AND id='stale'").run(
+    "Konversation stale",
+  );
+
+  const result = repairChatTitles(db, { log() {} });
+  assert.equal(result.changed, 1);
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='stale'").get().title,
+    "Katharina Fechner",
+  );
+  // Idempotent, and a user-set name is never overwritten.
+  assert.equal(repairChatTitles(db, { log() {} }).changed, 0);
+  db.prepare("UPDATE chats SET title=? WHERE type='conversation' AND id='stale'").run("Elternabend");
+  assert.equal(repairChatTitles(db, { log() {} }).changed, 0);
+  assert.equal(
+    db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='stale'").get().title,
+    "Elternabend",
+  );
   db.close();
 });
 

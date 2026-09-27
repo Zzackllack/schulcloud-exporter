@@ -25,7 +25,7 @@ Die Webansicht verwendet React, React Router, Tailwind CSS und Vite; die lokale,
 
 Für die Entwicklung startet `pnpm dev` API und Webansicht zusammen; die Ausgaben beider Prozesse sind mit `api` und `web` gekennzeichnet. `pnpm dev:api` startet nur die API, `pnpm dev:web` nur Vite auf <http://127.0.0.1:5173>. `pnpm serve` erstellt zuerst den Produktions-Build. `pnpm typecheck` und `pnpm test` prüfen Typen und Archiv/API-Verhalten.
 
-`pnpm export` erzeugt JSONL-Dateien für die normalisierten Tabellen in `archive-data/json-export/`, einschließlich `metadata` und `import_runs`. `pnpm repair` berechnet die Zeitstempel der Nachrichten neu aus den gespeicherten API-Antworten, ohne Netzwerkzugriff. Der JSON-Download in der Webansicht exportiert jeweils einen Chat. Sichere für eine vollständige lokale Kopie das gesamte Verzeichnis `archive-data/`. Ein unterbrochener Import kann erneut gestartet werden; gespeicherte Nachrichten und Dateien werden wiederverwendet.
+`pnpm export` erzeugt JSONL-Dateien für die normalisierten Tabellen in `archive-data/json-export/`, einschließlich `metadata` und `import_runs`. `pnpm repair` berechnet Zeitstempel und Konversationstitel neu aus den gespeicherten API-Antworten, ohne Netzwerkzugriff. Der JSON-Download in der Webansicht exportiert jeweils einen Chat. Sichere für eine vollständige lokale Kopie das gesamte Verzeichnis `archive-data/`. Ein unterbrochener Import kann erneut gestartet werden; gespeicherte Nachrichten und Dateien werden wiederverwendet.
 
 ## Grenzen
 
@@ -62,7 +62,7 @@ The viewer uses React, React Router, Tailwind CSS, and Vite. Hono serves the loc
 
 For development, `pnpm dev` starts the API and the viewer together, with each process's output labelled `api` or `web`. Use `pnpm dev:api` for the API alone or `pnpm dev:web` for Vite alone on <http://127.0.0.1:5173>. `pnpm serve` builds the production viewer first. Use `pnpm typecheck` and `pnpm test` to check types and archive/API behavior.
 
-`pnpm export` writes JSONL files for the normalized tables to `archive-data/json-export/`, including `metadata` and `import_runs`. `pnpm repair` recomputes message timestamps from the stored API responses without network access. The viewer can download JSON for an individual chat. Back up the entire `archive-data/` directory to preserve the full local archive. You can rerun an interrupted import; saved messages and files are reused.
+`pnpm export` writes JSONL files for the normalized tables to `archive-data/json-export/`, including `metadata` and `import_runs`. `pnpm repair` recomputes message timestamps and conversation titles from the stored API responses without network access. The viewer can download JSON for an individual chat. Back up the entire `archive-data/` directory to preserve the full local archive. You can rerun an interrupted import; saved messages and files are reused.
 
 ## Limitations
 

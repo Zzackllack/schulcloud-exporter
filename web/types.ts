@@ -33,10 +33,13 @@ export interface ArchiveFile {
 export interface Message {
   id: string;
   sender_id: string | null;
+  /** Falls back to "Unbekannte Person" server-side; test sender_id instead. */
   sender_name: string;
   sender_avatar: string | null;
   text: string | null;
   created_at: string | null;
+  /** "message" for real posts, otherwise a system event like "joined". */
+  kind: string;
   decryption_state: string;
   files: ArchiveFile[];
 }

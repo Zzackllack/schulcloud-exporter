@@ -107,17 +107,30 @@ export function saveChat(db, type, chat, archived = false, ownId = null) {
   return id;
 }
 
-function conversationTitle(chat, ownId) {
-  if (!Array.isArray(chat.participants)) return "";
-  const others = chat.participants.filter((entry) => {
+export function conversationTitle(chat, ownId) {
+  // The API sends `members`; `participants` only exists in the client's own
+  // types and never appears in a response, so it is kept as a fallback.
+  const people = Array.isArray(chat.members)
+    ? chat.members
+    : Array.isArray(chat.participants)
+      ? chat.participants
+      : null;
+  if (!people) return "";
+  // `members` already omits the account owner, but `participants` may not.
+  const others = people.filter((entry) => {
     const user = entry.user || entry;
     return String(user.id || entry.user_id) !== String(ownId);
   });
-  return (others.length ? others : chat.participants)
+  return (others.length ? others : people)
     .map((entry) => {
       const user = entry.user || entry;
+      // Deleted accounts come back with first_name/last_name scrubbed, so fall
+      // back to the same "Nutzer <id>" label saveMessage uses for senders and
+      // keep the title identical to what the message bubbles show.
       return (
-        [user.first_name, user.last_name].filter(Boolean).join(" ") || user.name
+        [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+        user.name ||
+        (user.id ? `Nutzer ${user.id}` : "")
       );
     })
     .filter(Boolean)

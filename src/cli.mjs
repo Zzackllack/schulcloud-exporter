@@ -4,7 +4,7 @@ import { importArchive } from "./importer.mjs";
 import { startServer } from "./server.mjs";
 import { readCredentials } from "./credentials.mjs";
 import { exportJson } from "./export.mjs";
-import { repairTimestamps } from "./repair.mjs";
+import { repairChatTitles, repairTimestamps } from "./repair.mjs";
 
 const command = process.argv[2];
 const directory = resolve(process.env.SCHULCLOUD_ARCHIVE_DIR || "archive-data");
@@ -32,6 +32,7 @@ if (command === "import") {
 } else if (command === "repair") {
   try {
     repairTimestamps(db);
+    repairChatTitles(db);
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

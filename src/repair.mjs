@@ -1,4 +1,4 @@
-import { messageDate } from "./database.mjs";
+import { conversationTitle, messageDate } from "./database.mjs";
 
 /**
  * Recomputes `messages.created_at` from the preserved API response.
@@ -47,4 +47,58 @@ export function repairTimestamps(db, output = console) {
       `. Ohne Datum gesamt: ${undated}.`,
   );
   return { checked: rows.length, changed, dropped };
+}
+
+/**
+ * Rebuilds conversation titles from the preserved `members` list.
+ *
+ * Archives written before the `members`/`participants` fix titled every
+ * conversation "Konversation <id>", because the importer looked for a field the
+ * API never sends. `raw_json` still holds `members`, so this needs no network
+ * access. Channels carry their own `name` and are left alone.
+ */
+export function repairChatTitles(db, output = console) {
+  const ownId = db
+    .prepare("SELECT value FROM metadata WHERE key='own_user_id'")
+    .get()?.value;
+  if (!ownId) {
+    output.log("Übersprungen: own_user_id fehlt, Konversationstitel nicht reparierbar.");
+    return { checked: 0, changed: 0 };
+  }
+  const rows = db
+    .prepare("SELECT type, id, title, raw_json FROM chats")
+    .all();
+  const update = db.prepare("UPDATE chats SET title=? WHERE type=? AND id=?");
+  let changed = 0;
+  let unresolved = 0;
+
+  db.exec("BEGIN");
+  try {
+    for (const row of rows) {
+      if (row.type !== "conversation") continue;
+      const chat = JSON.parse(row.raw_json);
+      // A conversation the user renamed keeps that name; only fall back to a
+      // derived one when the stored title is just the id placeholder.
+      const placeholder = `Konversation ${row.id}`;
+      if (row.title !== placeholder) continue;
+      const title = conversationTitle(chat, ownId);
+      if (!title) {
+        unresolved++;
+        continue;
+      }
+      update.run(title, row.type, row.id);
+      changed++;
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  output.log(
+    `${rows.length} Chats geprüft, ${changed} Konversationstitel korrigiert` +
+      (unresolved ? `, ${unresolved} ohne Teilnehmerliste` : "") +
+      ".",
+  );
+  return { checked: rows.length, changed, unresolved };
 }

@@ -1,4 +1,5 @@
-import { Download, FileText, ImageOff, LockKeyhole } from "lucide-react";
+import { Download, FileText, ImageOff, KeyRound, LockKeyhole, LogIn, LogOut } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Avatar } from "./avatar";
 import { time } from "../format";
 import type { ArchiveFile, Message as ArchiveMessage } from "../types";
@@ -8,7 +9,37 @@ interface MessageProps {
   own: boolean;
 }
 
+// Rows that carry no conversation text. Rendering them as chat bubbles produced
+// either an empty bubble or, for `encrypted`, the invented name
+// "Unbekannte Person" -- the API records `sender: "0"` for those, so there is
+// nobody to name.
+const systemEvents: Record<string, { label: string; icon: LucideIcon }> = {
+  encrypted: { label: "Verschlüsselte Konversation erstellt", icon: LockKeyhole },
+  joined: { label: "ist beigetreten", icon: LogIn },
+  left: { label: "hat den Chat verlassen", icon: LogOut },
+  key_resetted: { label: "hat den Schlüssel zurückgesetzt", icon: KeyRound },
+};
+
 export function Message({ message, own }: MessageProps) {
+  // Only treat a row as a system event when it really has nothing to show, so
+  // real content is never hidden behind a label.
+  const event = message.text || message.files.length ? null : systemEvents[message.kind];
+  if (event) {
+    const Icon = event.icon;
+    // sender_name is never empty (the API substitutes "Unbekannte Person"), so
+    // sender_id is the honest test for whether anybody is actually known.
+    const who = message.sender_id ? message.sender_name : "";
+    return (
+      <div className="system-message">
+        <span>
+          <Icon size={13} aria-hidden="true" />
+          {who ? `${who} ${event.label}` : event.label}
+        </span>
+        <time className="system-time" dateTime={message.created_at ?? undefined}>{time(message.created_at)}</time>
+      </div>
+    );
+  }
+
   const unverified = message.decryption_state === "unverified";
   return (
     <article className={`message ${own ? "own" : ""}`}>
