@@ -1,6 +1,7 @@
 import { Download, FileText, ImageOff, KeyRound, LockKeyhole, LogIn, LogOut, Trash2, Unlink } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "./avatar";
+import { LinkPreviewCard } from "./link-preview";
 import { MessageText } from "./markdown";
 import { time } from "../format";
 import type { ArchiveFile, Message as ArchiveMessage } from "../types";
@@ -59,6 +60,13 @@ export function Message({ message, own }: MessageProps) {
         ) : message.text ? <MessageText text={message.text} /> : null}
         {gap ? <GapNote icon={gap.icon} label={gap.label} /> : null}
         {message.files.length ? <div className="attachments">{message.files.map((file) => <Attachment key={file.id} file={file} />)}</div> : null}
+        {message.links.length ? (
+          <div className="link-previews">
+            {message.links.map((link) => (
+              <LinkPreviewCard key={link.url} link={link} />
+            ))}
+          </div>
+        ) : null}
         {message.reactions.length ? (
           <div className="reactions">
             {message.reactions.map((reaction) => (

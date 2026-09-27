@@ -51,12 +51,20 @@ export interface Message {
   attachment_missing: boolean;
   /** Busiest first; empty when nobody reacted. */
   reactions: Reaction[];
+  /** Link previews the API unfurled; empty when the message had none. */
+  links: LinkPreview[];
   decryption_state: string;
   files: ArchiveFile[];
 }
 
 export interface MessagePage {
   messages: Message[];
+}
+
+export interface LinkPreview {
+  url: string;
+  title: string;
+  description?: string;
 }
 
 export interface SearchHit {

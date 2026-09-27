@@ -7,6 +7,7 @@ import { request as httpRequest } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import {
+  normalizeLinks,
   normalizeReactions,
   openArchive,
   rebuildSearchIndex,
@@ -712,6 +713,90 @@ test("rebuilds the search index for archives created before it existed", async (
     server.close();
     db.close();
     await rm(legacy, { recursive: true, force: true });
+  }
+});
+
+test("normalises link previews and refuses unsafe urls", () => {
+  assert.equal(normalizeLinks(undefined), null);
+  assert.equal(normalizeLinks([]), null);
+  // Titles come back from the unfurler with stray tabs and newlines.
+  assert.deepEqual(
+    normalizeLinks([{ url: "https://a.test/x", title: "\n\tNextcloud\t" }]),
+    [{ url: "https://a.test/x", title: "Nextcloud" }],
+  );
+  // No usable title falls back to the host, without the www prefix.
+  assert.deepEqual(
+    normalizeLinks([{ url: "https://www.a.test/x", title: "   " }]),
+    [{ url: "https://www.a.test/x", title: "a.test" }],
+  );
+  // These become clickable links, so a script URL must never survive.
+  for (const url of [
+    "javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "file:///etc/passwd",
+    "not a url",
+  ]) {
+    assert.equal(normalizeLinks([{ url, title: "x" }]), null, url);
+  }
+  // requested_url is the fallback when url is absent.
+  assert.deepEqual(
+    normalizeLinks([{ requested_url: "https://b.test/y", title: "B" }]),
+    [{ url: "https://b.test/y", title: "B" }],
+  );
+  // Same url twice is one card.
+  assert.deepEqual(
+    normalizeLinks([
+      { url: "https://c.test/z", title: "C" },
+      { url: "https://c.test/z", title: "C again" },
+    ]),
+    [{ url: "https://c.test/z", title: "C" }],
+  );
+  // The preview image is dropped, never carried into the viewer.
+  const [only] = normalizeLinks([
+    { url: "https://d.test/i", title: "D", image: "https://tracker.test/p.png" },
+  ]);
+  assert.equal("image" in only, false);
+});
+
+test("stores link previews and backfills them from the response", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "links", name: "Links", encrypted: false });
+  saveMessage(db, "channel", "links", {
+    id: "l1",
+    text: "Siehe dazu",
+    links: [
+      { url: "https://example.org/angebot", title: "Angebot", description: "Kurzfassung" },
+      { url: "javascript:alert(1)", title: "böse" },
+    ],
+  });
+  saveMessage(db, "channel", "links", { id: "l2", text: "Ohne Link" });
+  const read = (id) => db.prepare("SELECT links FROM messages WHERE id=?").get(id).links;
+  assert.deepEqual(JSON.parse(read("l1")), [
+    { url: "https://example.org/angebot", title: "Angebot", description: "Kurzfassung" },
+  ]);
+  assert.equal(read("l2"), null);
+
+  db.prepare("UPDATE messages SET links=NULL WHERE id='l1'").run();
+  const result = repairMessageState(db, { log() {} });
+  assert.equal(result.withLinks, 1);
+  assert.equal(result.linkCount, 1);
+  assert.equal(JSON.parse(read("l1")).length, 1);
+
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  try {
+    const page = await (
+      await fetch(`http://127.0.0.1:${server.address().port}/api/chats/channel/links/messages`)
+    ).json();
+    const withLink = page.messages.find((m) => m.id === "l1");
+    const without = page.messages.find((m) => m.id === "l2");
+    assert.equal(withLink.links.length, 1);
+    assert.equal(withLink.links[0].url, "https://example.org/angebot");
+    // Never null: the component maps over it unconditionally.
+    assert.deepEqual(without.links, []);
+  } finally {
+    server.close();
+    db.close();
   }
 });
 

@@ -1,6 +1,7 @@
 import {
   conversationTitle,
   messageDate,
+  normalizeLinks,
   normalizeReactions,
   rebuildSearchIndex,
 } from "./database.mjs";
@@ -69,12 +70,12 @@ export function repairTimestamps(db, output = console) {
 export function repairMessageState(db, output = console) {
   const rows = db
     .prepare(
-      `SELECT id, deleted, attachment_missing, reactions, raw_json
+      `SELECT id, deleted, attachment_missing, reactions, links, raw_json
        FROM messages`,
     )
     .all();
   const update = db.prepare(
-    "UPDATE messages SET deleted=?, attachment_missing=?, reactions=? WHERE id=?",
+    "UPDATE messages SET deleted=?, attachment_missing=?, reactions=?, links=? WHERE id=?",
   );
   const people = db.prepare("SELECT id, deleted, raw_json FROM people").all();
   const updatePerson = db.prepare("UPDATE people SET deleted=? WHERE id=?");
@@ -82,6 +83,8 @@ export function repairMessageState(db, output = console) {
   let missingAttachments = 0;
   let withReactions = 0;
   let reactionCount = 0;
+  let withLinks = 0;
+  let linkCount = 0;
   let deletedPeople = 0;
 
   db.exec("BEGIN");
@@ -94,18 +97,25 @@ export function repairMessageState(db, output = console) {
         message.has_file_attached && !(message.files || []).length ? 1 : 0;
       const reactions = normalizeReactions(message.reactions);
       const stored = reactions ? JSON.stringify(reactions) : null;
+      const storedLinks = normalizeLinks(message.links);
+      const linksJson = storedLinks ? JSON.stringify(storedLinks) : null;
       if (
         deleted !== row.deleted ||
         missing !== row.attachment_missing ||
-        stored !== row.reactions
+        stored !== row.reactions ||
+        linksJson !== row.links
       ) {
-        update.run(deleted, missing, stored, row.id);
+        update.run(deleted, missing, stored, linksJson, row.id);
       }
       if (deleted) deletedMessages++;
       if (missing) missingAttachments++;
       if (reactions) {
         withReactions++;
         reactionCount += reactions.reduce((sum, entry) => sum + entry.count, 0);
+      }
+      if (storedLinks) {
+        withLinks++;
+        linkCount += storedLinks.length;
       }
     }
     for (const row of people) {
@@ -129,6 +139,7 @@ export function repairMessageState(db, output = console) {
     `${deletedMessages} gelöschte Nachrichten, ` +
       `${missingAttachments} mit fehlendem Anhang, ` +
       `${withReactions} Nachrichten mit ${reactionCount} Reaktionen, ` +
+      `${withLinks} Nachrichten mit ${linkCount} Linkvorschauen, ` +
       `${deletedPeople} gelöschte Konten erkannt, ` +
       `${indexed} Nachrichten für die Suche indiziert.`,
   );
@@ -137,6 +148,8 @@ export function repairMessageState(db, output = console) {
     missingAttachments,
     withReactions,
     reactionCount,
+    withLinks,
+    linkCount,
     deletedPeople,
     indexed,
   };

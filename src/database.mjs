@@ -47,6 +47,8 @@ export function openArchive(directory) {
       attachment_missing INTEGER NOT NULL DEFAULT 0,
       -- JSON array of {emoji, count}, busiest first. NULL when unreacted.
       reactions TEXT,
+      -- JSON array of {url, title, description?}. NULL when no link previews.
+      links TEXT,
       raw_json TEXT NOT NULL,
       FOREIGN KEY (chat_type, chat_id) REFERENCES chats(type, id),
       FOREIGN KEY (sender_id) REFERENCES people(id)
@@ -126,6 +128,7 @@ function migrate(db) {
     ["messages", "deleted", "TEXT"],
     ["messages", "attachment_missing", "INTEGER NOT NULL DEFAULT 0"],
     ["messages", "reactions", "TEXT"],
+    ["messages", "links", "TEXT"],
   ]) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
     if (columns.some((entry) => entry.name === column)) continue;
@@ -252,6 +255,50 @@ export function rebuildSearchIndex(db) {
 }
 
 /**
+ * Normalises the API's unfurled link previews into {url, title, description}.
+ *
+ * These are rendered as clickable links, so the scheme is checked: an archive
+ * of other people's messages must never be able to smuggle a `javascript:` href
+ * into the viewer. Only http(s) survives.
+ *
+ * The preview image is deliberately dropped. All of them are remote, and the
+ * viewer's CSP allows `img-src 'self' data:` only -- loading them would phone
+ * out to third parties just to read a local archive, and would be blocked
+ * anyway. provider/embedded/tags/time are of no use here either.
+ */
+export function normalizeLinks(value) {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set();
+  const links = [];
+  for (const entry of value) {
+    const raw = typeof entry?.url === "string" && entry.url
+      ? entry.url
+      : entry?.requested_url;
+    if (typeof raw !== "string") continue;
+    let parsed;
+    try {
+      parsed = new URL(raw.trim());
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") continue;
+    const url = parsed.toString();
+    if (seen.has(url)) continue;
+    seen.add(url);
+    // Titles arrive with stray tabs and newlines from the unfurler.
+    const title = collapse(entry?.title) || parsed.hostname.replace(/^www\./, "");
+    const description = collapse(entry?.description).slice(0, 220);
+    links.push(description ? { url, title, description } : { url, title });
+    if (links.length >= 6) break;
+  }
+  return links.length ? links : null;
+}
+
+function collapse(value) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+/**
  * Turns user input into a safe FTS5 MATCH expression.
  *
  * FTS5 has its own query syntax, so a bare "?" makes a search for `-` or `"` or
@@ -310,12 +357,13 @@ export function saveMessage(db, type, chatId, message) {
   const attachmentMissing =
     message.has_file_attached && !(message.files || []).length ? 1 : 0;
   const reactions = normalizeReactions(message.reactions);
+  const links = normalizeLinks(message.links);
   db.prepare(
     `INSERT INTO messages
     (id, chat_type, chat_id, sender_id, text, created_at, kind,
      reply_to_id, decryption_state, deleted, attachment_missing,
-     reactions, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     reactions, links, raw_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       sender_id=excluded.sender_id, text=excluded.text,
       created_at=excluded.created_at, kind=excluded.kind,
@@ -324,6 +372,7 @@ export function saveMessage(db, type, chatId, message) {
       deleted=excluded.deleted,
       attachment_missing=excluded.attachment_missing,
       reactions=excluded.reactions,
+      links=excluded.links,
       raw_json=excluded.raw_json`,
   ).run(
     String(message.id),
@@ -338,6 +387,7 @@ export function saveMessage(db, type, chatId, message) {
     message.deleted == null ? null : String(message.deleted),
     attachmentMissing,
     reactions ? JSON.stringify(reactions) : null,
+    links ? JSON.stringify(links) : null,
     JSON.stringify(message),
   );
   for (const file of message.files || []) {

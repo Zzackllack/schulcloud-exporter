@@ -326,6 +326,7 @@ function toPublicMessage(row) {
     deleted: Boolean(row.deleted),
     attachment_missing: Boolean(row.attachment_missing),
     reactions: parseJsonArray(row.reactions),
+    links: parseJsonArray(row.links),
     decryption_state: row.decryption_state,
     files: JSON.parse(row.files_json || "[]"),
   };
