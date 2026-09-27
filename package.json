@@ -9,7 +9,8 @@
   "scripts": {
     "sync": "node src/cli.mjs import",
     "serve": "pnpm build && node src/cli.mjs serve",
-    "dev": "vite --host 127.0.0.1",
+    "dev": "node src/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
     "dev:api": "node src/cli.mjs serve",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
