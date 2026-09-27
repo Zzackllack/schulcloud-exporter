@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowUp } from "lucide-react";
-import { loadMessages, MESSAGE_PAGE_SIZE } from "../api";
+import type { FormEvent } from "react";
+import { AlertCircle, ArrowUp, CalendarDays } from "lucide-react";
+import { loadMessages, loadMessagesAround, MESSAGE_PAGE_SIZE } from "../api";
 import { fullDate } from "../format";
 import type { Chat, Message as ArchiveMessage } from "../types";
 import { Message } from "./message";
@@ -18,7 +19,12 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [jumpDate, setJumpDate] = useState("");
+  const [jumping, setJumping] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
+  // Set when a jump replaced the window: the top of the timeline is the point
+  // then, not the newest message.
+  const jumped = useRef(false);
   const content = useRef<HTMLDivElement>(null);
   const request = useRef<AbortController | null>(null);
   // Whether the viewport should stay pinned to the newest message. Tracked from
@@ -34,7 +40,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     const inner = content.current;
     if (!element || !inner) return;
     const observer = new ResizeObserver(() => {
-      if (restoring.current || !follow.current) return;
+      if (restoring.current || !follow.current || jumped.current) return;
       element.scrollTop = element.scrollHeight;
     });
     observer.observe(inner);
@@ -49,6 +55,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     setError(null);
     setLoading(true);
     follow.current = true;
+    jumped.current = false;
     loadMessages(chat.type, chat.id, null, controller.signal)
       .then((page) => {
         setMessages(page.messages);
@@ -109,11 +116,51 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     }
   }
 
+  async function jumpToDate(event: FormEvent) {
+    event.preventDefault();
+    if (!jumpDate || jumping) return;
+    setJumping(true);
+    setError(null);
+    try {
+      const page = await loadMessagesAround(chat.type, chat.id, jumpDate, new AbortController().signal);
+      jumped.current = true;
+      follow.current = false;
+      setMessages(page.messages);
+      setHasMore(page.messages.length === MESSAGE_PAGE_SIZE);
+      // Show where the window starts, not the newest message.
+      requestAnimationFrame(() => {
+        if (viewport.current) viewport.current.scrollTop = 0;
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Datum konnte nicht geladen werden.");
+    } finally {
+      setJumping(false);
+    }
+  }
+
   let previousDay = "";
   return (
     <div className="timeline" ref={viewport} onScroll={onScroll} aria-live="polite">
       <div className="timeline-inner" ref={content}>
-        {hasMore ? <button className="older-button" type="button" onClick={loadOlder} disabled={loading}><ArrowUp size={16} />{loading ? "Lädt …" : "Ältere Nachrichten laden"}</button> : null}
+        <div className="timeline-tools">
+          {hasMore ? <button className="older-button" type="button" onClick={loadOlder} disabled={loading}><ArrowUp size={16} />{loading ? "Lädt …" : "Ältere Nachrichten laden"}</button> : <span />}
+          <form className="jump-form" onSubmit={jumpToDate}>
+            <label className="jump-field" htmlFor="jump-date">
+              <CalendarDays size={15} aria-hidden="true" />
+              <span className="sr-only">Zu Datum springen</span>
+              <input
+                id="jump-date"
+                type="date"
+                value={jumpDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(event) => setJumpDate(event.target.value)}
+              />
+            </label>
+            <button className="jump-button" type="submit" disabled={!jumpDate || jumping}>
+              Springen
+            </button>
+          </form>
+        </div>
         {error ? <div className="timeline-error" role="alert"><AlertCircle size={18} />Nachrichten konnten nicht geladen werden ({error}). <button type="button" onClick={messages.length ? loadOlder : () => window.location.reload()}>Erneut versuchen</button></div> : null}
         {loading && !messages.length ? <div className="timeline-state">Nachrichten werden geladen …</div> : null}
         {!loading && !error && !messages.length ? <div className="timeline-state">In diesem Chat sind keine Nachrichten gespeichert.</div> : null}

@@ -9,6 +9,8 @@ import { publicImportState, startImport, subscribe } from "./import-state.mjs";
 import { searchQuery } from "./database.mjs";
 
 const webDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
+// Kept in step with MESSAGE_PAGE_SIZE in web/api.ts.
+const MESSAGE_PAGE_SIZE = 100;
 const assetTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -212,6 +214,87 @@ export function createApp(db, directory) {
     return context.json({
       chat: { type, id, title: chat.title, import_state: chat.import_state, import_error: chat.import_error },
       messages: messages.reverse().map(toPublicMessage),
+    });
+  });
+
+  // Loads a window of messages around a date.
+  //
+  // Paging backwards through "Ältere Nachrichten laden" is the only other way to
+  // reach 2021 in a channel with a thousand messages, which is click-hostile.
+  // The window starts a little before the requested day and fills forward from
+  // there, so the target lands near the top instead of at either edge.
+  app.get("/api/chats/:type/:id/around", (context) => {
+    const chat = findChat(db, context);
+    if (!chat) return context.json({ error: "Chat nicht gefunden" }, 404);
+    const { type, id } = context.req.param();
+    const day = String(context.req.query("date") || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      return context.json({ error: "Datum muss JJJJ-MM-TT sein" }, 400);
+    }
+    // Midday avoids landing on the wrong side of a timezone boundary.
+    const target = new Date(`${day}T12:00:00.000Z`).toISOString();
+
+    // Anchor on the last message at or before the requested day. A single
+    // "(<= ? OR >= ?) ORDER BY created_at" query looks equivalent but is not:
+    // every row satisfies one branch, so it just returns the channel's first
+    // message. When the day predates the chat, fall back to the first message
+    // after it.
+    const anchor =
+      db
+        .prepare(
+          `SELECT m.created_at FROM messages m
+           WHERE m.chat_type=? AND m.chat_id=? AND m.created_at IS NOT NULL
+             AND m.created_at <= ?
+           ORDER BY m.created_at DESC LIMIT 1`,
+        )
+        .get(type, id, target) ??
+      db
+        .prepare(
+          `SELECT m.created_at FROM messages m
+           WHERE m.chat_type=? AND m.chat_id=? AND m.created_at IS NOT NULL
+             AND m.created_at >= ?
+           ORDER BY m.created_at ASC LIMIT 1`,
+        )
+        .get(type, id, target);
+    if (!anchor) {
+      return context.json({ error: "Keine Nachrichten im Chat", messages: [] }, 404);
+    }
+
+    // Step back half a page so the target is not the first thing on screen.
+    const lead = db
+      .prepare(
+        `SELECT m.created_at FROM messages m
+         WHERE m.chat_type=? AND m.chat_id=? AND m.created_at < ?
+         ORDER BY m.created_at DESC LIMIT ?`,
+      )
+      .get(type, id, anchor.created_at, Math.floor(MESSAGE_PAGE_SIZE / 2));
+    const from = lead?.created_at ?? anchor.created_at;
+
+    const messages = db
+      .prepare(
+        `SELECT m.*, p.display_name AS sender_name, p.avatar_hash AS sender_avatar,
+           p.deleted AS sender_deleted,
+           (SELECT json_group_array(json_object('id', f.id, 'name', f.name,
+             'mime', f.mime, 'size_bytes', f.size_bytes,
+             'blob_hash', f.blob_hash, 'status', f.status))
+            FROM message_files mf JOIN files f ON f.id=mf.file_id
+            WHERE mf.message_id=m.id) AS files_json
+         FROM messages m LEFT JOIN people p ON p.id=m.sender_id
+         WHERE m.chat_type=? AND m.chat_id=?
+           AND COALESCE(m.created_at,'') >= ?
+         ORDER BY COALESCE(m.created_at,'') ASC, m.id ASC LIMIT ?`,
+      )
+      .all(type, id, from, MESSAGE_PAGE_SIZE);
+
+    return context.json({
+      chat: {
+        type,
+        id,
+        title: chat.title,
+        import_state: chat.import_state,
+        import_error: chat.import_error,
+      },
+      messages: messages.map(toPublicMessage),
     });
   });
 

@@ -82,6 +82,14 @@ a { color: inherit; }
 .import-notice { display: flex; align-items: center; gap: 9px; padding: 11px 30px; background: #fff0d9; color: #7a4a19; font-size: 12px; }
 .timeline { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 19px clamp(16px, 5vw, 80px); }
 .timeline-inner { max-width: 960px; min-height: 100%; margin: 0 auto; }
+.timeline-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 21px; }
+.timeline-tools .older-button { margin: 0; }
+.jump-form { display: flex; align-items: center; gap: 6px; }
+.jump-field { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 9px; border: 1px solid #d1dfe6; border-radius: 99px; background: #fff; color: #6d7e8e; }
+.jump-field input { border: 0; outline: 0; background: transparent; color: #34667e; font-size: 11px; }
+.jump-button { height: 32px; padding: 0 12px; border: 1px solid #d1dfe6; border-radius: 99px; background: #fff; color: #34667e; font-size: 11px; font-weight: 650; }
+.jump-button:hover { background: #eef7f9; }
+.jump-button:disabled { opacity: .5; cursor: not-allowed; }
 .older-button { display: flex; align-items: center; gap: 7px; margin: 4px auto 21px; padding: 9px 14px; border: 1px solid #d1dfe6; border-radius: 99px; background: #fff; color: #34667e; font-size: 12px; font-weight: 650; }
 .older-button:disabled { opacity: .6; cursor: wait; }
 .timeline-state { padding: 55px 15px; color: var(--color-muted); text-align: center; font-size: 13px; }

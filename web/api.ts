@@ -42,6 +42,19 @@ export function loadMessages(
   );
 }
 
+export function loadMessagesAround(
+  type: ChatType,
+  id: string,
+  date: string,
+  signal: AbortSignal,
+) {
+  const params = new URLSearchParams({ date });
+  return getJson<MessagePage>(
+    `/api/chats/${type}/${encodeURIComponent(id)}/around?${params}`,
+    signal,
+  );
+}
+
 export function searchMessages(query: string, signal: AbortSignal) {
   const params = new URLSearchParams({ q: query, limit: "50" });
   return getJson<SearchResponse>(`/api/search?${params}`, signal);

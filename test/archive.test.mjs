@@ -800,6 +800,61 @@ test("stores link previews and backfills them from the response", async () => {
   }
 });
 
+test("opens a window of messages around a requested date", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "jump", name: "Sprung", encrypted: false });
+  // Three messages a month apart, so a window is guaranteed to exist.
+  const days = ["2021-01-10", "2021-02-10", "2021-03-10", "2021-04-10", "2021-05-10"];
+  for (const [index, day] of days.entries()) {
+    saveMessage(db, "channel", "jump", {
+      // ids are the primary key of messages, so they must be unique across
+      // this whole file, not just within this chat.
+      id: `jump-${index}`,
+      text: `Tag ${day}`,
+      time: String(Date.parse(`${day}T10:00:00Z`) / 1000),
+      sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+    });
+  }
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const around = (date) =>
+    fetch(`${base}/api/chats/channel/jump/around?date=${date}`).then((r) =>
+      r.json().then((body) => ({ status: r.status, body })),
+    );
+  try {
+    // The requested day has to be inside the window, not merely near it.
+    const { body } = await around("2021-02-15");
+    const texts = body.messages.map((m) => m.text);
+    assert.ok(texts.includes("Tag 2021-02-10"), JSON.stringify(texts));
+    assert.ok(texts.includes("Tag 2021-01-10"), "context before the target");
+    // Still ascending, as the timeline expects.
+    assert.deepEqual(
+      body.messages.map((m) => m.created_at),
+      [...body.messages.map((m) => m.created_at)].sort(),
+    );
+    assert.equal(body.chat.title, "Sprung");
+
+    // A day before the chat existed falls back to the first message rather
+    // than returning nothing.
+    const early = await around("2019-01-01");
+    assert.equal(early.body.messages[0].text, "Tag 2021-01-10");
+    // And a day after it ends with the last message.
+    const late = await around("2030-01-01");
+    assert.equal(late.body.messages.at(-1).text, "Tag 2021-05-10");
+
+    assert.equal((await around("nonsense")).status, 400);
+    assert.equal((await around("")).status, 400);
+    assert.equal(
+      (await fetch(`${base}/api/chats/channel/missing/around?date=2021-01-01`)).status,
+      404,
+    );
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
 test("loads older messages even when timestamps are missing", async () => {
   const db = openArchive(directory);
   saveChat(db, "conversation", { id: "missing-date", name: "Alt" });

@@ -1,4 +1,15 @@
-import { Download, FileText, ImageOff, KeyRound, LockKeyhole, LogIn, LogOut, Trash2, Unlink } from "lucide-react";
+import {
+  Download,
+  FileText,
+  HelpCircle,
+  ImageOff,
+  KeyRound,
+  LockKeyhole,
+  LogIn,
+  LogOut,
+  Trash2,
+  Unlink,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "./avatar";
 import { LinkPreviewCard } from "./link-preview";
@@ -28,6 +39,21 @@ const systemEvents: Record<string, { label: string; icon: LucideIcon }> = {
 const gaps: { test: (m: ArchiveMessage) => boolean; label: string; icon: LucideIcon }[] = [
   { test: (m) => m.deleted, label: "Nachricht gelöscht", icon: Trash2 },
   { test: (m) => m.attachment_missing, label: "Anhang nicht mehr verfügbar", icon: Unlink },
+  // "empty" means the message was encrypted and the client never got any
+  // plaintext -- different from "unverified", which was decrypted but could not
+  // be confirmed. Without this it was the one case that still drew a blank
+  // bubble.
+  {
+    test: (m) => m.decryption_state === "empty",
+    label: "Verschlüsselte Nachricht ohne lesbaren Inhalt",
+    icon: LockKeyhole,
+  },
+  // Last resort: nothing was ever recorded for this row.
+  {
+    test: (m) => !m.text && !m.files.length,
+    label: "Nachricht ohne Inhalt",
+    icon: HelpCircle,
+  },
 ];
 
 export function Message({ message, own }: MessageProps) {
