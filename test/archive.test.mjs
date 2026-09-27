@@ -21,7 +21,12 @@ import {
   repairMessageState,
   repairTimestamps,
 } from "../src/repair.mjs";
-import { importStatus, resetImportState, startImport } from "../src/import-state.mjs";
+import {
+  importHistory,
+  importStatus,
+  resetImportState,
+  startImport,
+} from "../src/import-state.mjs";
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
@@ -848,6 +853,81 @@ test("opens a window of messages around a requested date", async () => {
     assert.equal(
       (await fetch(`${base}/api/chats/channel/missing/around?date=2021-01-01`)).status,
       404,
+    );
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test("streams the whole archive as newline-delimited JSON", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "ex", name: "Export", encrypted: false });
+  saveMessage(db, "channel", "ex", {
+    id: "x1",
+    text: "Zeile eins\nund zwei",
+    sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+  });
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const response = await fetch(`${base}/api/export`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /application\/x-ndjson/);
+    assert.match(response.headers.get("content-disposition"), /schulcloud-archiv\.ndjson/);
+    const lines = (await response.text()).split("\n").filter(Boolean);
+    // Every line must stand alone: a newline inside a message body has to be
+    // escaped, not emitted raw, or the file stops being parseable.
+    for (const line of lines) {
+      assert.doesNotThrow(() => JSON.parse(line), line.slice(0, 80));
+    }
+    const records = lines.map((line) => JSON.parse(line));
+    const manifest = records[0];
+    assert.equal(manifest.record, "manifest");
+    assert.equal(manifest.format, "schulcloud-archive-v1");
+    assert.ok(manifest.tables.includes("messages"));
+    const message = records.find((r) => r.record === "messages" && r.row.id === "x1");
+    assert.equal(message.row.text, "Zeile eins\nund zwei");
+    assert.ok(records.some((r) => r.record === "chats" && r.row.id === "ex"));
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test("reports previous import runs", async () => {
+  const db = openArchive(directory);
+  // Inserted in the order they would really happen, since the history is
+  // ordered by id -- the most recent attempt first.
+  db.prepare(
+    `INSERT INTO import_runs (started_at, finished_at, status, error)
+     VALUES ('2026-01-01T03:04:05.000Z', NULL, 'failed', 'Anmeldung abgelehnt')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO import_runs (started_at, finished_at, status, error)
+     VALUES ('2026-01-02T03:04:05.000Z', '2026-01-02T03:09:05.000Z', 'partial', '2 Chats und 1 Datei prüfen')`,
+  ).run();
+  // This file shares one archive and an earlier test starts a real run, so
+  // assert on these two rows rather than on the total.
+  const history = importHistory(db);
+  const mine = history.filter((run) => run.started_at.startsWith("2026-01-0"));
+  assert.equal(mine.length, 2);
+  // Newest first, so the most recent attempt is the one the reader cares about.
+  assert.equal(mine[0].status, "partial");
+  assert.equal(mine[1].status, "failed");
+  assert.equal(mine[1].error, "Anmeldung abgelehnt");
+  assert.equal(history[0].id >= history[1].id, true, "newest first");
+
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  try {
+    const body = await (
+      await fetch(`http://127.0.0.1:${server.address().port}/api/import`)
+    ).json();
+    assert.ok(body.history.length >= 2);
+    assert.ok(
+      body.history.some((run) => run.error === "2 Chats und 1 Datei prüfen"),
     );
   } finally {
     server.close();

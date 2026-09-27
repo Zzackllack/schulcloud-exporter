@@ -11,7 +11,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { startImport } from "../api";
 import type { ImportCredentials } from "../api";
-import type { ImportState } from "../types";
+import type { ImportRun, ImportState } from "../types";
 
 interface ImportPanelProps {
   /** Owned by App, which holds the single progress stream. */
@@ -43,6 +43,7 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
   // Defensive: the panel renders server-pushed data, and one malformed frame
   // must not be able to blank the app. There is no error boundary above this.
   const feed = current.feed ?? [];
+  const history = current.history ?? [];
   const [credentials, setCredentials] = useState<ImportCredentials>({
     email: "",
     password: "",
@@ -227,6 +228,21 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
           </p>
         ) : null}
 
+        {history.length ? (
+          <details className="run-history">
+            <summary>Import-Verlauf ({history.length})</summary>
+            <ul>
+              {history.map((run: ImportRun) => (
+                <li key={run.id} className={run.status}>
+                  <span className="run-when">{runTime(run)}</span>
+                  <span className="run-status">{runLabel(run)}</span>
+                  {run.error ? <span className="run-error">{run.error}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
         {!current.running ? (
           <div className="import-action">
             <button
@@ -252,6 +268,26 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
       </div>
     </section>
   );
+}
+
+function runLabel(run: ImportRun) {
+  if (run.status === "complete") return "vollständig";
+  if (run.status === "partial") return "mit Rückfragen";
+  if (run.status === "running") return "läuft noch";
+  return "fehlgeschlagen";
+}
+
+function runTime(run: ImportRun) {
+  const stamp = run.finished_at ?? run.started_at;
+  const date = new Date(stamp);
+  if (Number.isNaN(date.valueOf())) return stamp;
+  return date.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // German needs the singular for exactly one: "1 Chat", not "1 Chats".

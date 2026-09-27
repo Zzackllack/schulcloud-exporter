@@ -84,6 +84,14 @@ export interface SearchResponse {
   results: SearchHit[];
 }
 
+export interface ImportRun {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: "complete" | "partial" | "failed" | "running";
+  error: string | null;
+}
+
 export type ImportStatus =
   | "idle"
   | "running"
@@ -119,4 +127,5 @@ export interface ImportState {
   current: ImportChatRef | null;
   error: string | null;
   feed: ImportFeedLine[];
+  history?: ImportRun[];
 }

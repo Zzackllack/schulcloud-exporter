@@ -134,7 +134,7 @@ export function createApp(db, directory) {
     });
   });
 
-  app.get("/api/import", (context) => context.json(publicImportState()));
+  app.get("/api/import", (context) => context.json(publicImportState(db)));
 
   app.post("/api/import", async (context) => {
     let body = {};
@@ -145,7 +145,7 @@ export function createApp(db, directory) {
     }
     try {
       await startImport(db, directory, body);
-      return context.json(publicImportState(), 202);
+      return context.json(publicImportState(db), 202);
     } catch (error) {
       return context.json(
         { error: String(error.message || error) },
@@ -167,14 +167,14 @@ export function createApp(db, directory) {
       });
       const unsubscribe = subscribe(() => {
         stream
-          .writeSSE({ event: "progress", data: JSON.stringify(publicImportState()) })
+          .writeSSE({ event: "progress", data: JSON.stringify(publicImportState(db)) })
           .catch(() => {
             open = false;
           });
       });
       await stream.writeSSE({
         event: "snapshot",
-        data: JSON.stringify(publicImportState()),
+        data: JSON.stringify(publicImportState(db)),
       });
       // Keep intermediaries from closing an idle connection during a long
       // download, and notice when the client goes away. Sent without an event
@@ -295,6 +295,63 @@ export function createApp(db, directory) {
         import_error: chat.import_error,
       },
       messages: messages.map(toPublicMessage),
+    });
+  });
+
+  // The whole archive as newline-delimited JSON.
+  //
+  // `pnpm export` writes the same tables as separate files, but that needs a
+  // terminal, and a browser cannot zip a 975 MB blob directory. One streamed
+  // NDJSON file is the shape a browser can actually download, and streaming
+  // keeps memory flat instead of assembling a 40 MB string in one go.
+  //
+  // The first line is a manifest, so the file is self-describing and can be
+  // read line by line without knowing the table order in advance.
+  app.get("/api/export", (context) => {
+    const datasets = [
+      ["chats", "SELECT * FROM chats ORDER BY type, id"],
+      ["people", "SELECT * FROM people ORDER BY id"],
+      [
+        "messages",
+        "SELECT * FROM messages ORDER BY chat_type, chat_id, created_at, id",
+      ],
+      ["files", "SELECT * FROM files ORDER BY id"],
+      ["message_files", "SELECT * FROM message_files ORDER BY message_id, file_id"],
+      ["blobs", "SELECT * FROM blobs ORDER BY hash"],
+      ["metadata", "SELECT * FROM metadata ORDER BY key"],
+      ["import_runs", "SELECT * FROM import_runs ORDER BY id"],
+    ];
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const write = (line) => controller.enqueue(encoder.encode(`${line}\n`));
+        try {
+          write(
+            JSON.stringify({
+              record: "manifest",
+              format: "schulcloud-archive-v1",
+              exported_at: new Date().toISOString(),
+              tables: datasets.map(([name]) => name),
+              // File contents live beside the database and are not inlined.
+              blobs: "archive-data/blobs/",
+            }),
+          );
+          for (const [table, query] of datasets) {
+            for (const row of db.prepare(query).iterate()) {
+              write(JSON.stringify({ record: table, row }));
+            }
+          }
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Content-Disposition": buildContentDisposition("schulcloud-archiv.ndjson"),
+      },
     });
   });
 

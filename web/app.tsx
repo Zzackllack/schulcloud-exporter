@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Cloud, Download, LockKeyhole, ShieldCheck } from "lucide-react";
+import { Archive, ArrowLeft, Cloud, Download, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Link, useMatch } from "react-router";
 import { exportUrl, loadArchive, loadImportState, streamImport } from "./api";
 import { Avatar } from "./components/avatar";
@@ -82,7 +82,16 @@ export function App() {
                 <h2>{selected.title}</h2>
                 <p>{selected.type === "channel" ? "Channel" : "Direktnachricht"} <span aria-hidden="true">·</span> {selected.message_count.toLocaleString("de-DE")} Nachrichten{selected.archived ? " · Archiviert" : ""}</p>
               </div>
-              <a className="export-button" href={exportUrl(selected)} download><Download size={17} /><span>JSON exportieren</span></a>
+              <div className="header-actions">
+                <a
+                  className="export-button"
+                  href="/api/export"
+                  download="schulcloud-archiv.ndjson"
+                >
+                  <Archive size={17} /><span>Gesamt</span>
+                </a>
+                <a className="export-button" href={exportUrl(selected)} download><Download size={17} /><span>JSON exportieren</span></a>
+              </div>
             </header>
             {["failed", "needs-review"].includes(selected.import_state) ? <div className="import-notice" role="status"><ShieldCheck size={17} />{selected.import_error || "Dieser Chat muss nach dem Import geprüft werden."}</div> : null}
             <Timeline key={`${selected.type}/${selected.id}`} chat={selected} ownUserId={summary?.ownUserId ?? null} />

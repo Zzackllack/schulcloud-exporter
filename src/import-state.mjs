@@ -1,6 +1,8 @@
 import { importArchive } from "./importer.mjs";
 import { credentialsFromEnv } from "./credentials.mjs";
 
+const HISTORY_LIMIT = 10;
+
 // How many activity lines to keep. The full log of a real import runs to
 // thousands of entries and the UI only ever shows a tail, so an unbounded
 // array would grow for no reason.
@@ -45,7 +47,22 @@ export function importStatus() {
  * it on every progress frame would mean re-sending hundreds of lines to a
  * browser that only ever renders the tail.
  */
-export function publicImportState() {
+/**
+ * Previous import runs, newest first.
+ *
+ * import_runs records every attempt with its outcome, and the viewer showed
+ * none of it: "N Chats prüfen" says that something failed, never when or why.
+ */
+export function importHistory(db) {
+  return db
+    .prepare(
+      `SELECT id, started_at, finished_at, status, error
+       FROM import_runs ORDER BY id DESC LIMIT ?`,
+    )
+    .all(HISTORY_LIMIT);
+}
+
+export function publicImportState(db) {
   const {
     status,
     startedAt,
@@ -77,6 +94,10 @@ export function publicImportState() {
     current,
     error,
     feed,
+    // Sent in every progress frame, not just the initial fetch. A frame that
+    // omitted it would overwrite what the client had already loaded, and the
+    // history list would vanish the moment the event stream connected.
+    history: importHistory(db),
   };
 }
 
@@ -196,7 +217,7 @@ export async function startImport(db, directory, submitted) {
     );
   };
   task.then(settle, settle);
-  return publicImportState();
+  return publicImportState(db);
 }
 
 function onProgress(event) {
