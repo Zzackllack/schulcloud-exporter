@@ -59,6 +59,20 @@ export function Message({ message, own }: MessageProps) {
         ) : message.text ? <MessageText text={message.text} /> : null}
         {gap ? <GapNote icon={gap.icon} label={gap.label} /> : null}
         {message.files.length ? <div className="attachments">{message.files.map((file) => <Attachment key={file.id} file={file} />)}</div> : null}
+        {message.reactions.length ? (
+          <div className="reactions">
+            {message.reactions.map((reaction) => (
+              <span
+                className="reaction"
+                key={reaction.emoji}
+                title={`${reaction.count} ${reaction.count === 1 ? "Reaktion" : "Reaktionen"}`}
+              >
+                <span aria-hidden="true">{reaction.emoji}</span>
+                <span className="reaction-count">{reaction.count.toLocaleString("de-DE")}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {unverified ? <p className="raw-note">Der Originalwert bleibt im JSON-Export erhalten.</p> : null}
         <time className="message-time" dateTime={message.created_at ?? undefined}>{time(message.created_at)}</time>
       </div>

@@ -1,4 +1,8 @@
-import { conversationTitle, messageDate } from "./database.mjs";
+import {
+  conversationTitle,
+  messageDate,
+  normalizeReactions,
+} from "./database.mjs";
 
 /**
  * Recomputes `messages.created_at` from the preserved API response.
@@ -50,40 +54,58 @@ export function repairTimestamps(db, output = console) {
 }
 
 /**
- * Backfills the deletion and missing-attachment flags from `raw_json`.
+ * Backfills every message column that is derived from `raw_json`.
  *
- * Both are visible properties of the API response, not something the importer
- * used to record, so older archives have them as NULL. Deriving them here keeps
- * them out of the per-request path -- the alternative, parsing `raw_json` in
- * SQL or per row, means megabytes of JSON per page because sender objects carry
- * large public keys.
+ * These are visible properties of the API response that the importer used to
+ * discard: deletion, missing attachments, reactions and link previews. Older
+ * archives have them as NULL, so the fix is exact and offline. One pass rather
+ * than one per field -- each pass would otherwise re-read every raw_json.
+ *
+ * Keeping them out of the request path is the point: `raw_json` carries large
+ * sender public keys, so parsing it per row in a query means megabytes of JSON
+ * per page.
  */
-export function repairDeletions(db, output = console) {
-  const messages = db
-    .prepare("SELECT id, deleted, attachment_missing, raw_json FROM messages")
+export function repairMessageState(db, output = console) {
+  const rows = db
+    .prepare(
+      `SELECT id, deleted, attachment_missing, reactions, raw_json
+       FROM messages`,
+    )
     .all();
-  const updateMessage = db.prepare(
-    "UPDATE messages SET deleted=?, attachment_missing=? WHERE id=?",
+  const update = db.prepare(
+    "UPDATE messages SET deleted=?, attachment_missing=?, reactions=? WHERE id=?",
   );
   const people = db.prepare("SELECT id, deleted, raw_json FROM people").all();
   const updatePerson = db.prepare("UPDATE people SET deleted=? WHERE id=?");
   let deletedMessages = 0;
   let missingAttachments = 0;
+  let withReactions = 0;
+  let reactionCount = 0;
   let deletedPeople = 0;
 
   db.exec("BEGIN");
   try {
-    for (const row of messages) {
+    for (const row of rows) {
       const message = JSON.parse(row.raw_json);
       const deleted =
         message.deleted == null ? null : String(message.deleted);
       const missing =
         message.has_file_attached && !(message.files || []).length ? 1 : 0;
-      if (deleted !== row.deleted || missing !== row.attachment_missing) {
-        updateMessage.run(deleted, missing, row.id);
+      const reactions = normalizeReactions(message.reactions);
+      const stored = reactions ? JSON.stringify(reactions) : null;
+      if (
+        deleted !== row.deleted ||
+        missing !== row.attachment_missing ||
+        stored !== row.reactions
+      ) {
+        update.run(deleted, missing, stored, row.id);
       }
       if (deleted) deletedMessages++;
       if (missing) missingAttachments++;
+      if (reactions) {
+        withReactions++;
+        reactionCount += reactions.reduce((sum, entry) => sum + entry.count, 0);
+      }
     }
     for (const row of people) {
       const person = JSON.parse(row.raw_json);
@@ -101,9 +123,10 @@ export function repairDeletions(db, output = console) {
   output.log(
     `${deletedMessages} gelöschte Nachrichten, ` +
       `${missingAttachments} mit fehlendem Anhang, ` +
+      `${withReactions} Nachrichten mit ${reactionCount} Reaktionen, ` +
       `${deletedPeople} gelöschte Konten erkannt.`,
   );
-  return { deletedMessages, missingAttachments, deletedPeople };
+  return { deletedMessages, missingAttachments, withReactions, reactionCount, deletedPeople };
 }
 
 /**

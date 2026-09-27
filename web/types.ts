@@ -22,6 +22,11 @@ export interface Summary {
   lastRun: { status: string; finished_at: string | null } | null;
 }
 
+export interface Reaction {
+  emoji: string;
+  count: number;
+}
+
 export interface ArchiveFile {
   id: string;
   name: string;
@@ -44,6 +49,8 @@ export interface Message {
   kind: string;
   deleted: boolean;
   attachment_missing: boolean;
+  /** Busiest first; empty when nobody reacted. */
+  reactions: Reaction[];
   decryption_state: string;
   files: ArchiveFile[];
 }

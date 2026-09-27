@@ -45,6 +45,8 @@ export function openArchive(directory) {
       deleted TEXT,
       -- The API advertised an attachment but shipped no file metadata.
       attachment_missing INTEGER NOT NULL DEFAULT 0,
+      -- JSON array of {emoji, count}, busiest first. NULL when unreacted.
+      reactions TEXT,
       raw_json TEXT NOT NULL,
       FOREIGN KEY (chat_type, chat_id) REFERENCES chats(type, id),
       FOREIGN KEY (sender_id) REFERENCES people(id)
@@ -95,6 +97,7 @@ function migrate(db) {
     ["people", "deleted", "TEXT"],
     ["messages", "deleted", "TEXT"],
     ["messages", "attachment_missing", "INTEGER NOT NULL DEFAULT 0"],
+    ["messages", "reactions", "TEXT"],
   ]) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
     if (columns.some((entry) => entry.name === column)) continue;
@@ -187,6 +190,27 @@ export function messageDate(message) {
   return null;
 }
 
+/**
+ * Normalises the API's reaction buckets into {emoji, count}, busiest first.
+ *
+ * The wire format is [{emoji, num_reactions}]. Junk entries are dropped rather
+ * than stored, since nothing renders a reaction it cannot count.
+ */
+export function normalizeReactions(value) {
+  if (!Array.isArray(value)) return null;
+  const merged = new Map();
+  for (const entry of value) {
+    const emoji = typeof entry?.emoji === "string" ? entry.emoji.trim() : "";
+    const count = Number(entry?.num_reactions);
+    if (!emoji || !Number.isFinite(count) || count <= 0) continue;
+    merged.set(emoji, (merged.get(emoji) ?? 0) + Math.trunc(count));
+  }
+  if (!merged.size) return null;
+  return [...merged.entries()]
+    .map(([emoji, count]) => ({ emoji, count }))
+    .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+}
+
 export function saveMessage(db, type, chatId, message) {
   const sender =
     typeof message.sender === "object" && message.sender
@@ -222,11 +246,13 @@ export function saveMessage(db, type, chatId, message) {
   // is how an unavailable attachment shows up as a message with no content.
   const attachmentMissing =
     message.has_file_attached && !(message.files || []).length ? 1 : 0;
+  const reactions = normalizeReactions(message.reactions);
   db.prepare(
     `INSERT INTO messages
     (id, chat_type, chat_id, sender_id, text, created_at, kind,
-     reply_to_id, decryption_state, deleted, attachment_missing, raw_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     reply_to_id, decryption_state, deleted, attachment_missing,
+     reactions, raw_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       sender_id=excluded.sender_id, text=excluded.text,
       created_at=excluded.created_at, kind=excluded.kind,
@@ -234,6 +260,7 @@ export function saveMessage(db, type, chatId, message) {
       decryption_state=excluded.decryption_state,
       deleted=excluded.deleted,
       attachment_missing=excluded.attachment_missing,
+      reactions=excluded.reactions,
       raw_json=excluded.raw_json`,
   ).run(
     String(message.id),
@@ -247,6 +274,7 @@ export function saveMessage(db, type, chatId, message) {
     decryptionState,
     message.deleted == null ? null : String(message.deleted),
     attachmentMissing,
+    reactions ? JSON.stringify(reactions) : null,
     JSON.stringify(message),
   );
   for (const file of message.files || []) {

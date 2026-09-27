@@ -6,9 +6,18 @@ import { join } from "node:path";
 import { request as httpRequest } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
-import { openArchive, saveChat, saveMessage } from "../src/database.mjs";
+import {
+  normalizeReactions,
+  openArchive,
+  saveChat,
+  saveMessage,
+} from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
-import { repairChatTitles, repairDeletions, repairTimestamps } from "../src/repair.mjs";
+import {
+  repairChatTitles,
+  repairMessageState,
+  repairTimestamps,
+} from "../src/repair.mjs";
 import { importStatus, resetImportState, startImport } from "../src/import-state.mjs";
 import { startServer } from "../src/server.mjs";
 
@@ -305,7 +314,7 @@ test("records deleted messages, missing attachments and deleted accounts", async
 
 test("backfills deletion flags from the stored response", async () => {
   // This file shares one temp archive, so assert on the rows created here
-  // rather than on the totals repairDeletions reports.
+  // rather than on the totals repairMessageState reports.
   const db = openArchive(directory);
   saveChat(db, "channel", { id: "old", name: "Alt", encrypted: false });
   // An archive written before the columns existed: flags are NULL.
@@ -314,7 +323,7 @@ test("backfills deletion flags from the stored response", async () => {
   saveMessage(db, "channel", "old", { id: "c", text: "unverändert" });
   db.prepare("UPDATE messages SET deleted=NULL, attachment_missing=0 WHERE id IN ('a','b','c')").run();
 
-  const result = repairDeletions(db, { log() {} });
+  const result = repairMessageState(db, { log() {} });
   assert.ok(result.deletedMessages >= 1);
   assert.ok(result.missingAttachments >= 1);
   const flag = (id) => db.prepare("SELECT deleted, attachment_missing FROM messages WHERE id=?").get(id);
@@ -503,6 +512,85 @@ test("runs at most one import at a time", async () => {
     delete process.env.SCHULCLOUD_PASSWORD;
     delete process.env.SCHULCLOUD_SECURITY_PASSWORD;
     resetImportState();
+    db.close();
+  }
+});
+
+test("normalises reactions and drops unusable entries", async () => {
+  assert.deepEqual(normalizeReactions(undefined), null);
+  assert.deepEqual(normalizeReactions([]), null);
+  // The wire shape is {emoji, num_reactions}, not a count field.
+  assert.deepEqual(
+    normalizeReactions([{ emoji: "👍", num_reactions: 7 }]),
+    [{ emoji: "👍", count: 7 }],
+  );
+  // Busiest first.
+  assert.deepEqual(
+    normalizeReactions([
+      { emoji: "🎉", num_reactions: 2 },
+      { emoji: "👍", num_reactions: 30 },
+    ]),
+    [
+      { emoji: "👍", count: 30 },
+      { emoji: "🎉", count: 2 },
+    ],
+  );
+  // Duplicate emoji merge rather than showing two pills for one glyph.
+  assert.deepEqual(
+    normalizeReactions([
+      { emoji: "👍", num_reactions: 3 },
+      { emoji: "👍", num_reactions: 4 },
+    ]),
+    [{ emoji: "👍", count: 7 }],
+  );
+  // Junk must not reach the UI, where it would render an uncounted pill.
+  assert.deepEqual(
+    normalizeReactions([
+      { emoji: "", num_reactions: 5 },
+      { emoji: "👍", num_reactions: 0 },
+      { emoji: "👍", num_reactions: "many" },
+      { num_reactions: 5 },
+      null,
+      { emoji: "✅", num_reactions: 1.7 },
+    ]),
+    [{ emoji: "✅", count: 1 }],
+  );
+});
+
+test("stores reactions on import and backfills them from the response", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "react", name: "Reaktionen", encrypted: false });
+  saveMessage(db, "channel", "react", {
+    id: "r1",
+    text: "Da",
+    reactions: [{ emoji: "👍", num_reactions: 12 }],
+  });
+  saveMessage(db, "channel", "react", { id: "r2", text: "Ohne" });
+  const read = (id) => db.prepare("SELECT reactions FROM messages WHERE id=?").get(id).reactions;
+  assert.equal(read("r1"), JSON.stringify([{ emoji: "👍", count: 12 }]));
+  assert.equal(read("r2"), null);
+
+  // A pre-reactions archive has NULL, and the repair recovers it from raw_json.
+  db.prepare("UPDATE messages SET reactions=NULL WHERE id='r1'").run();
+  const result = repairMessageState(db, { log() {} });
+  assert.equal(result.withReactions, 1);
+  assert.equal(result.reactionCount, 12);
+  assert.equal(read("r1"), JSON.stringify([{ emoji: "👍", count: 12 }]));
+
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const page = await (
+      await fetch(`${base}/api/chats/channel/react/messages`)
+    ).json();
+    const withReaction = page.messages.find((m) => m.id === "r1");
+    const without = page.messages.find((m) => m.id === "r2");
+    assert.deepEqual(withReaction.reactions, [{ emoji: "👍", count: 12 }]);
+    // Never null: the UI maps over it unconditionally.
+    assert.deepEqual(without.reactions, []);
+  } finally {
+    server.close();
     db.close();
   }
 });

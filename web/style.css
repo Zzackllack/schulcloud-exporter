@@ -113,6 +113,9 @@ a { color: inherit; }
 .message-warning { display: flex; align-items: center; gap: 6px; margin: 0; color: #8e5927; font-size: 12px; }
 .raw-note { margin: 7px 0 0; color: #8e5927; font-size: 11px; }
 .message-time { display: block; margin-top: 5px; color: #8293a0; text-align: right; font-size: 10px; }
+.reactions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.reaction { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border: 1px solid #dfe8ed; border-radius: 99px; background: #f6f9fa; font-size: 12px; line-height: 1.4; }
+.reaction-count { color: #5b6f7f; font-size: 11px; font-weight: 650; }
 .attachments { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
 .attachment { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 9px; border: 1px solid #e0e8eb; border-radius: 8px; background: #f5f8f9; color: #315e72; text-decoration: none; font-size: 11px; }
 .attachment span { overflow: hidden; text-overflow: ellipsis; }

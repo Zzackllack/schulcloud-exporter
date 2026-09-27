@@ -6,7 +6,7 @@ import { readCredentials } from "./credentials.mjs";
 import { exportJson } from "./export.mjs";
 import {
   repairChatTitles,
-  repairDeletions,
+  repairMessageState,
   repairTimestamps,
 } from "./repair.mjs";
 
@@ -37,7 +37,7 @@ if (command === "import") {
   try {
     repairTimestamps(db);
     repairChatTitles(db);
-    repairDeletions(db);
+    repairMessageState(db);
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

@@ -245,6 +245,18 @@ function encodeRFC5987ValueChars(value) {
     .replace(/\*/g, "%2A");
 }
 
+// Stored columns are written by the importer or by `pnpm repair`, so a NULL or
+// unparseable value means "no reactions" rather than an error worth surfacing.
+function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function toPublicMessage(row) {
   // A deleted account has its name scrubbed by the API, so say so rather than
   // showing the "Nutzer <id>" placeholder as if it were a real name.
@@ -261,6 +273,7 @@ function toPublicMessage(row) {
     reply_to_id: row.reply_to_id,
     deleted: Boolean(row.deleted),
     attachment_missing: Boolean(row.attachment_missing),
+    reactions: parseJsonArray(row.reactions),
     decryption_state: row.decryption_state,
     files: JSON.parse(row.files_json || "[]"),
   };
