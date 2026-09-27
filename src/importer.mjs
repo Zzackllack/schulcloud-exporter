@@ -5,11 +5,16 @@ import { saveChat, saveMessage } from "./database.mjs";
 
 const PAGE_SIZE = 50;
 
+// Progress is reported as typed events so a UI can build counters from facts.
+// `output` stays the human-facing channel, which keeps `pnpm sync` unchanged --
+// the alternative, parsing "channel 12: 45 Nachrichten" back into numbers, is
+// coupled to wording nobody remembers to keep stable.
 export async function importArchive(
   db,
   directory,
   credentials,
   output = console,
+  onProgress = () => {},
 ) {
   const run = db
     .prepare(
@@ -19,7 +24,26 @@ export async function importArchive(
     .run(new Date().toISOString());
   const runId = Number(run.lastInsertRowid);
   const client = new StashcatClient({ baseUrl: "https://api.stashcat.com/" });
+  const report = (event) => {
+    try {
+      onProgress(event);
+    } catch {
+      // A failing progress listener must never abort an import.
+    }
+  };
+  const logging = {
+    log: (message) => {
+      output.log(message);
+      report({ type: "log", level: "info", message: String(message) });
+    },
+    error: (message) => {
+      output.error(message);
+      report({ type: "log", level: "error", message: String(message) });
+    },
+  };
+  report({ type: "start", at: new Date().toISOString() });
   try {
+    logging.log("Anmeldung an schul.cloud …");
     await client.login({
       email: credentials.email,
       password: credentials.password,
@@ -44,8 +68,8 @@ export async function importArchive(
         const key = `channel:${id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        saveChat(db, "channel", { ...chat, company_id: company.id });
-        await importChat(db, directory, client, "channel", id, output);
+        const chatId = saveChat(db, "channel", { ...chat, company_id: company.id });
+        await importChat(db, directory, client, "channel", chatId, logging, report, own.id);
       }
     }
     for (const archived of [false, true]) {
@@ -54,11 +78,12 @@ export async function importArchive(
         const key = `conversation:${id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        saveChat(db, "conversation", chat, archived, String(own.id));
-        await importChat(db, directory, client, "conversation", id, output);
+        const chatId = saveChat(db, "conversation", chat, archived, String(own.id));
+        await importChat(db, directory, client, "conversation", chatId, logging, report, own.id);
       }
     }
-    await importAvatars(db, directory, client, output);
+    report({ type: "avatars" });
+    await importAvatars(db, directory, client, logging);
     const failed = db
       .prepare(
         `SELECT COUNT(*) AS n FROM chats
@@ -82,16 +107,25 @@ export async function importArchive(
         : null,
       runId,
     );
-    output.log(`Fertig: ${seen.size} Chats geprüft.`);
+    logging.log(`Fertig: ${seen.size} Chats geprüft.`);
+    report({
+      type: "done",
+      status: failed || failedFiles ? "partial" : "complete",
+      chats: seen.size,
+      failedChats: failed,
+      failedFiles,
+      at: new Date().toISOString(),
+    });
   } catch (error) {
     db.prepare(
       `UPDATE import_runs SET finished_at=?, status='failed', error=?
       WHERE id=?`,
     ).run(new Date().toISOString(), String(error), runId);
+    report({ type: "failed", error: String(error) });
     throw error;
   } finally {
     await Promise.resolve(client.logout()).catch((error) => {
-      output.error(`Logout fehlgeschlagen: ${error}`);
+      logging.error(`Logout fehlgeschlagen: ${error}`);
     });
   }
 }
@@ -121,14 +155,31 @@ export async function* listConversations(client, archived) {
   }
 }
 
-export async function importChat(db, directory, client, type, id, output) {
+export async function importChat(
+  db,
+  directory,
+  client,
+  type,
+  id,
+  output,
+  report = () => {},
+  ownId = null,
+) {
   const state = db
     .prepare(`SELECT import_state FROM chats WHERE type=? AND id=?`)
     .get(type, id);
-  if (state?.import_state === "complete") return;
+  if (state?.import_state === "complete") {
+    report({ type: "chat-skipped", chat: { type, id } });
+    return;
+  }
+  const title =
+    db.prepare(`SELECT title FROM chats WHERE type=? AND id=?`).get(type, id)?.title ??
+    `${type} ${id}`;
   output.log(`${type} ${id}: importiere …`);
+  report({ type: "chat-start", chat: { type, id, title } });
   let count = 0;
   let unverified = 0;
+  let files = 0;
   try {
     let aesKey;
     for await (const message of listMessages(client, type, id)) {
@@ -148,7 +199,9 @@ export async function importChat(db, directory, client, type, id, output) {
             );
           }
         }
-        await importFile(db, directory, client, file, aesKey, output);
+        if (await importFile(db, directory, client, file, aesKey, output)) {
+          files++;
+        }
       }
     }
     db.prepare(
@@ -164,12 +217,26 @@ export async function importChat(db, directory, client, type, id, output) {
       id,
     );
     output.log(`${type} ${id}: ${count} Nachrichten, ${unverified} ungeprüft`);
+    report({
+      type: "chat-done",
+      chat: { type, id, title },
+      messages: count,
+      unverified,
+      files,
+    });
   } catch (error) {
     db.prepare(
       `UPDATE chats SET import_state='failed', import_error=?
       WHERE type=? AND id=?`,
     ).run(String(error), type, id);
     output.error(`${type} ${id}: ${error}`);
+    report({
+      type: "chat-failed",
+      chat: { type, id, title },
+      messages: count,
+      files,
+      error: String(error),
+    });
     // Continue with other chats. Failed chats are visible and retry on the next run.
   }
 }
@@ -199,10 +266,10 @@ export async function* listMessages(client, type, id) {
 }
 
 async function importFile(db, directory, client, file, aesKey, output) {
-  if (file.id == null) return;
+  if (file.id == null) return false;
   const id = String(file.id);
   const current = db.prepare("SELECT status FROM files WHERE id=?").get(id);
-  if (current?.status === "complete") return;
+  if (current?.status === "complete") return false;
   try {
     if (file.encrypted && !aesKey)
       throw new Error("Kein Entschlüsselungsschlüssel");
@@ -212,11 +279,13 @@ async function importFile(db, directory, client, file, aesKey, output) {
       `UPDATE files SET blob_hash=?, status='complete', error=NULL
       WHERE id=?`,
     ).run(hash, id);
+    return true;
   } catch (error) {
     db.prepare(`UPDATE files SET status='failed', error=? WHERE id=?`).run(
       String(error),
       id,
     );
     output.error(`Datei ${id}: ${error}`);
+    return false;
   }
 }

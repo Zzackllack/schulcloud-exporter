@@ -1,18 +1,31 @@
-export async function readCredentials() {
+/**
+ * Credentials already present in the environment, or null when incomplete.
+ *
+ * The server has no terminal to prompt on, so it needs this instead of
+ * readCredentials(): calling that from a long-lived process would either throw
+ * or block on a TTY that nobody is watching.
+ */
+export function credentialsFromEnv() {
   const credentials = {
     email: process.env.SCHULCLOUD_EMAIL,
     password: process.env.SCHULCLOUD_PASSWORD,
     securityPassword: process.env.SCHULCLOUD_SECURITY_PASSWORD,
   };
-  if (Object.values(credentials).every(Boolean)) return credentials;
+  return Object.values(credentials).every(Boolean) ? credentials : null;
+}
+
+export async function readCredentials() {
+  const fromEnv = credentialsFromEnv();
+  if (fromEnv) return fromEnv;
+  const credentials = { email: null, password: null, securityPassword: null };
   if (!process.stdin.isTTY) {
     throw new Error(
       "Für die Anmeldung ist ein Terminal nötig. Zugangsdaten können alternativ als Prozess-Umgebungsvariablen übergeben werden.",
     );
   }
-  credentials.email ||= await hiddenQuestion("schul.cloud E-Mail: ");
-  credentials.password ||= await hiddenQuestion("Account-Kennwort: ");
-  credentials.securityPassword ||= await hiddenQuestion(
+  credentials.email = await hiddenQuestion("schul.cloud E-Mail: ");
+  credentials.password = await hiddenQuestion("Account-Kennwort: ");
+  credentials.securityPassword = await hiddenQuestion(
     "Verschlüsselungskennwort: ",
   );
   if (Object.values(credentials).some((value) => !value)) {

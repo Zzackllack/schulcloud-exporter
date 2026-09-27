@@ -3,11 +3,13 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { request as httpRequest } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
 import { openArchive, saveChat, saveMessage } from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
 import { repairChatTitles, repairDeletions, repairTimestamps } from "../src/repair.mjs";
+import { importStatus, resetImportState, startImport } from "../src/import-state.mjs";
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
@@ -384,6 +386,123 @@ test("serves deletion state and names deleted accounts honestly", async () => {
     assert.equal(second.sender_name, "Gelöschtes Konto");
   } finally {
     server.close();
+    db.close();
+  }
+});
+
+test("keeps the archive read-only and only allows a guarded import trigger", async () => {
+  const db = openArchive(directory);
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = (path, init = {}) =>
+    fetch(`${base}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+      ...init,
+    });
+  try {
+    // Everything that is not the import trigger stays read-only.
+    for (const path of ["/api/chats", "/api/summary", "/api/chats/7/messages"]) {
+      assert.equal((await post(path)).status, 405, `${path} must reject writes`);
+    }
+    assert.equal((await post("/api/import/../chats")).status, 405);
+
+    // The import routes answer, but a write without JSON is refused: a
+    // cross-origin form cannot set that content type, and a cross-origin
+    // fetch would need a preflight this server never answers.
+    assert.equal((await post("/api/import", { headers: {} })).status, 415);
+    assert.equal(
+      (
+        await post("/api/import", {
+          headers: { "content-type": "text/plain" },
+        })
+      ).status,
+      415,
+    );
+    // No credentials anywhere -> a clear 400 rather than a stack trace.
+    const missing = await post("/api/import");
+    assert.equal(missing.status, 400);
+    assert.match((await missing.json()).error, /SCHULCLOUD_EMAIL|Zugangsdaten/);
+
+    // Reading the state stays a GET and is always available.
+    const state = await fetch(`${base}/api/import`);
+    assert.equal(state.status, 200);
+    const body = await state.json();
+    assert.equal(body.running, false);
+    assert.equal(body.status, "idle");
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test("rejects import triggers that did not come from this machine", async () => {
+  const db = openArchive(directory);
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const port = server.address().port;
+  // fetch silently drops `host` -- it is a forbidden header name -- so this has
+  // to be a raw request for the check to mean anything.
+  const raw = (host) =>
+    new Promise((resolve, reject) => {
+      const request = httpRequest(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/api/import",
+          method: "POST",
+          headers: { host, "content-type": "application/json" },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+        },
+      );
+      request.on("error", reject);
+      request.end("{}");
+    });
+  try {
+    // A remote page can point a name it controls at 127.0.0.1, so the Host
+    // header -- not the socket -- is what proves the caller meant this viewer.
+    assert.equal(await raw("attacker.example.com"), 403);
+    assert.equal(await raw("127.0.0.1.attacker.example"), 403);
+    // Local names are allowed through to the handler, which then rejects the
+    // request for having no credentials.
+    assert.equal(await raw("localhost"), 400);
+    assert.equal(await raw(`127.0.0.1:${port}`), 400);
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test("runs at most one import at a time", async () => {
+  resetImportState();
+  const db = openArchive(directory);
+  // No credentials and no env: the attempt must fail before any network work.
+  await assert.rejects(() => startImport(db, directory, null), (error) => {
+    assert.equal(error.status, 400);
+    return true;
+  });
+  // Fake credentials get past validation, so the second call has to collide.
+  process.env.SCHULCLOUD_EMAIL = "a@example.org";
+  process.env.SCHULCLOUD_PASSWORD = "x";
+  process.env.SCHULCLOUD_SECURITY_PASSWORD = "y";
+  const first = startImport(db, directory, null).catch(() => {});
+  try {
+    assert.equal(importStatus().status, "running");
+    const second = await startImport(db, directory, null).then(
+      () => null,
+      (error) => error,
+    );
+    assert.equal(second?.status, 409);
+  } finally {
+    delete process.env.SCHULCLOUD_EMAIL;
+    delete process.env.SCHULCLOUD_PASSWORD;
+    delete process.env.SCHULCLOUD_SECURITY_PASSWORD;
+    resetImportState();
     db.close();
   }
 });

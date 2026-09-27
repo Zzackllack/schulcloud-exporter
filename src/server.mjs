@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { blobPath } from "./blobs.mjs";
+import { publicImportState, startImport, subscribe } from "./import-state.mjs";
 
 const webDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
 const assetTypes = new Map([
@@ -11,6 +13,20 @@ const assetTypes = new Map([
   [".css", "text/css; charset=utf-8"],
   [".svg", "image/svg+xml"],
 ]);
+
+// The only routes allowed to change anything. Everything else stays read-only,
+// which is the guarantee the rest of the API is built on.
+const WRITABLE = /^\/api\/import(\/|$)/;
+
+// A remote page can point a hostname it controls at 127.0.0.1, so the Host
+// header -- not the socket -- is what proves the caller meant this viewer.
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+
+function isLocalHost(headers) {
+  const host = (headers.get("host") || "").toLowerCase();
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return LOCAL_HOSTS.has(name) || LOCAL_HOSTS.has(host);
+}
 
 export function createApp(db, directory) {
   const app = new Hono();
@@ -23,7 +39,19 @@ export function createApp(db, directory) {
       "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
     );
     if (context.req.method !== "GET") {
-      return context.json({ error: "Nur Lesen erlaubt" }, 405);
+      const path = new URL(context.req.url).pathname;
+      if (!WRITABLE.test(path)) {
+        return context.json({ error: "Nur Lesen erlaubt" }, 405);
+      }
+      if (!isLocalHost(context.req.raw.headers)) {
+        return context.json({ error: "Nur lokal erlaubt" }, 403);
+      }
+      // Requiring JSON means a cross-origin form cannot post here, and a
+      // cross-origin fetch would need a preflight this server never answers.
+      // Together with the Host check that closes localhost CSRF and rebinding.
+      if (!context.req.header("content-type")?.startsWith("application/json")) {
+        return context.json({ error: "application/json erforderlich" }, 415);
+      }
     }
     await next();
   });
@@ -51,6 +79,62 @@ export function createApp(db, directory) {
       FROM chats ORDER BY latest_at DESC, title COLLATE NOCASE`).all();
     return context.json(chats);
   });
+
+  app.get("/api/import", (context) => context.json(publicImportState()));
+
+  app.post("/api/import", async (context) => {
+    let body = {};
+    try {
+      body = await context.req.json();
+    } catch {
+      // Empty body is fine: it means "use the environment credentials".
+    }
+    try {
+      await startImport(db, directory, body);
+      return context.json(publicImportState(), 202);
+    } catch (error) {
+      return context.json(
+        { error: String(error.message || error) },
+        error.status || 500,
+      );
+    }
+  });
+
+  // One-way progress stream. A snapshot goes out first so a reload rejoins the
+  // run in progress rather than starting from zero. Each frame carries the
+  // whole visible state rather than a delta, so a missed or reordered frame
+  // can never leave the UI showing something that never happened.
+  app.get("/api/import/events", (context) =>
+    streamSSE(context, async (stream) => {
+      let open = true;
+      stream.onAbort(() => {
+        open = false;
+        unsubscribe();
+      });
+      const unsubscribe = subscribe(() => {
+        stream
+          .writeSSE({ event: "progress", data: JSON.stringify(publicImportState()) })
+          .catch(() => {
+            open = false;
+          });
+      });
+      await stream.writeSSE({
+        event: "snapshot",
+        data: JSON.stringify(publicImportState()),
+      });
+      // Keep intermediaries from closing an idle connection during a long
+      // download, and notice when the client goes away. Sent without an event
+      // name so it arrives as a plain `message`, which the client does not
+      // treat as state.
+      while (open) {
+        await stream.sleep(15000);
+        if (!open) break;
+        await stream.writeSSE({ data: "" }).catch(() => {
+          open = false;
+        });
+      }
+    }),
+  );
 
   app.get("/api/chats/:type/:id/messages", (context) => {
     const chat = findChat(db, context);

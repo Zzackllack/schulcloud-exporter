@@ -1,22 +1,40 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Cloud, Download, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Link, useMatch } from "react-router";
-import { loadArchive, exportUrl } from "./api";
+import { exportUrl, loadArchive, loadImportState, streamImport } from "./api";
 import { Avatar } from "./components/avatar";
+import { ImportPanel } from "./components/import-panel";
 import { Sidebar } from "./components/sidebar";
 import { Timeline } from "./components/timeline";
-import type { Chat, Summary } from "./types";
+import type { Chat, ImportState, Summary } from "./types";
 
 export function App() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importState, setImportState] = useState<ImportState | null>(null);
   const match = useMatch("/chats/:type/:id");
   const { type, id } = match?.params ?? {};
   const selected = chats.find((chat) => chat.type === type && chat.id === id);
   const showingChat = Boolean(type && id);
 
+  // One stream for the app: the sidebar button has to know an import is
+  // running even while the dialog is closed, and a second EventSource in the
+  // panel would just duplicate every frame.
   useEffect(() => {
+    const controller = new AbortController();
+    loadImportState(controller.signal)
+      .then(setImportState)
+      .catch(() => {});
+    const stop = streamImport(setImportState);
+    return () => {
+      controller.abort();
+      stop();
+    };
+  }, []);
+
+  const reload = useCallback(() => {
     const controller = new AbortController();
     loadArchive(controller.signal)
       .then((data) => {
@@ -29,6 +47,8 @@ export function App() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => reload(), [reload]);
+
   return (
     <div className={`app-shell ${showingChat ? "chat-open" : ""}`}>
       <nav className="rail" aria-label="Archiv">
@@ -36,7 +56,13 @@ export function App() {
         <span className="rail-label">Schulcloud<br />Archiv</span>
         <div className="rail-bottom"><LockKeyhole size={18} /><span>Lokal & privat</span></div>
       </nav>
-      <Sidebar chats={chats} summary={summary} error={error} />
+      <Sidebar
+        chats={chats}
+        summary={summary}
+        error={error}
+        importing={Boolean(importState?.running)}
+        onImport={() => setImportOpen(true)}
+      />
       <main className="conversation">
         {selected ? (
           <>
@@ -62,6 +88,12 @@ export function App() {
           </div>
         )}
       </main>
+      <ImportPanel
+        open={importOpen}
+        state={importState}
+        onClose={() => setImportOpen(false)}
+        onFinished={reload}
+      />
     </div>
   );
 }

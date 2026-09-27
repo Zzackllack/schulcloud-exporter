@@ -51,3 +51,40 @@ export interface Message {
 export interface MessagePage {
   messages: Message[];
 }
+
+export type ImportStatus =
+  | "idle"
+  | "running"
+  | "complete"
+  | "partial"
+  | "failed";
+
+export interface ImportChatRef {
+  type: string;
+  id: string;
+  title?: string;
+}
+
+export interface ImportFeedLine {
+  level: "info" | "error";
+  message: string;
+  at: string;
+}
+
+export interface ImportState {
+  status: ImportStatus;
+  running: boolean;
+  hasEnvCredentials: boolean;
+  credentialsInEnv?: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  chats: number;
+  messages: number;
+  files: number;
+  errors: number;
+  failedChats: number;
+  failedFiles: number;
+  current: ImportChatRef | null;
+  error: string | null;
+  feed: ImportFeedLine[];
+}

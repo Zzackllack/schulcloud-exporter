@@ -1,4 +1,4 @@
-import { Archive, AlertCircle, MessageCircle, Search, X } from "lucide-react";
+import { Archive, AlertCircle, CloudDownload, MessageCircle, Search, X } from "lucide-react";
 import { NavLink } from "react-router";
 import { useDeferredValue, useState } from "react";
 import { Avatar } from "./avatar";
@@ -11,9 +11,11 @@ interface SidebarProps {
   chats: Chat[];
   summary: Summary | null;
   error: string | null;
+  importing: boolean;
+  onImport: () => void;
 }
 
-export function Sidebar({ chats, summary, error }: SidebarProps) {
+export function Sidebar({ chats, summary, error, importing, onImport }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const deferredSearch = useDeferredValue(search);
@@ -76,6 +78,16 @@ export function Sidebar({ chats, summary, error }: SidebarProps) {
         ))}
       </div>
       <footer className="sidebar-footer">
+        {/* Not disabled while an import runs: this is the control you want to
+            press to watch it. The dialog refuses to close until it finishes. */}
+        <button
+          className={`import-button ${importing ? "running" : ""}`}
+          type="button"
+          onClick={onImport}
+        >
+          <CloudDownload size={16} />
+          {importing ? "Import läuft …" : "Archiv importieren"}
+        </button>
         <div className="sidebar-stat"><MessageCircle size={15} /><span>{(summary?.messages ?? 0).toLocaleString("de-DE")} Nachrichten</span></div>
         <div className="sidebar-stat"><Archive size={15} /><span>{(summary?.files ?? 0).toLocaleString("de-DE")} Dateien</span></div>
         {summary?.failed ? <div className="sidebar-stat warning"><AlertCircle size={15} /><span>{summary.failed} Chats prüfen</span></div> : null}
