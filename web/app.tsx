@@ -62,6 +62,15 @@ export function App() {
         error={error}
         importing={Boolean(importState?.running)}
         onImport={() => setImportOpen(true)}
+        panel={
+          importOpen ? (
+            <ImportPanel
+              state={importState}
+              onClose={() => setImportOpen(false)}
+              onFinished={reload}
+            />
+          ) : null
+        }
       />
       <main className="conversation">
         {selected ? (
@@ -88,12 +97,6 @@ export function App() {
           </div>
         )}
       </main>
-      <ImportPanel
-        open={importOpen}
-        state={importState}
-        onClose={() => setImportOpen(false)}
-        onFinished={reload}
-      />
     </div>
   );
 }

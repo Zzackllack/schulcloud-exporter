@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   Check,
   CloudDownload,
   HardDrive,
   Loader,
   MessageCircle,
-  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { startImport } from "../api";
@@ -14,7 +14,6 @@ import type { ImportCredentials } from "../api";
 import type { ImportState } from "../types";
 
 interface ImportPanelProps {
-  open: boolean;
   /** Owned by App, which holds the single progress stream. */
   state: ImportState | null;
   onClose: () => void;
@@ -39,7 +38,7 @@ const idleState: ImportState = {
   feed: [],
 };
 
-export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelProps) {
+export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
   const current = state ?? idleState;
   // Defensive: the panel renders server-pushed data, and one malformed frame
   // must not be able to blank the app. There is no error boundary above this.
@@ -52,44 +51,28 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
   const [formError, setFormError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const announced = useRef<string | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const focused = useRef(false);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   // A finished run has to refresh the sidebar, once, keyed on the run's end
   // time so a re-render can never fire it twice.
   useEffect(() => {
-    if (!open || current.running || !current.finishedAt) return;
+    if (current.running || !current.finishedAt) return;
     if (announced.current === current.finishedAt) return;
     announced.current = current.finishedAt;
     onFinished();
-  }, [open, current.running, current.finishedAt, onFinished]);
+  }, [current.running, current.finishedAt, onFinished]);
 
-  // Escape closes, Tab stays inside -- a dialog you can walk out of with the
-  // keyboard is not much of a dialog.
+  // Land focus on the first field so keyboard users are not stranded at the
+  // top -- but only for a genuinely fresh start. Focusing on every progress
+  // frame would yank the view around mid-run, and focusing after a run would
+  // scroll the result the reader came to see out of view.
   useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !current.running) {
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled)',
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, current.running, onClose]);
+    if (focused.current) return;
+    if (current.hasEnvCredentials || current.finishedAt) return;
+    focused.current = true;
+    emailRef.current?.focus();
+  }, [current.hasEnvCredentials, current.finishedAt]);
 
   async function begin() {
     setStarting(true);
@@ -105,10 +88,7 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
     }
   }
 
-  if (!open) return null;
-
   const needsForm = !current.hasEnvCredentials;
-  const busy = current.running || starting;
   const done = !current.running && Boolean(current.finishedAt);
   const outcome =
     current.status === "failed"
@@ -118,62 +98,31 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
         : "Import abgeschlossen";
 
   return (
-    <div className="overlay" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !current.running) onClose();
-    }}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="import-title"
-        ref={dialogRef}
-      >
-        <header className="dialog-head">
-          <div className="dialog-symbol">
-            <CloudDownload size={30} strokeWidth={1.7} />
-          </div>
-          <div className="dialog-titles">
-            <h2 id="import-title">Archiv importieren</h2>
-            <p>
-              {current.running
-                ? "Läuft im Hintergrund. Du kannst weiter durch das Archiv stöbern."
-                : done
-                  ? outcome
-                  : "Liest Channels und Konversationen von schul.cloud."}
-            </p>
-          </div>
-          {!current.running ? (
-            <button className="dialog-close" type="button" onClick={onClose} aria-label="Schließen">
-              <X size={19} />
-            </button>
-          ) : null}
-        </header>
+    <section className="import-panel" aria-label="Archiv importieren">
+      <header className="import-head">
+        <button className="import-back" type="button" onClick={onClose} aria-label="Zurück zur Chatliste">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h2>Archiv importieren</h2>
+          <p>
+            {current.running
+              ? "Läuft im Hintergrund."
+              : done
+                ? outcome
+                : "Liest Channels und Konversationen von schul.cloud."}
+          </p>
+        </div>
+      </header>
 
+      <div className="import-body">
         {current.running ? (
-          <>
-            <div className="progress" role="progressbar" aria-label="Import läuft">
-              <div className="progress-sweep" />
-            </div>
-            <div className="stat-row">
-              <Stat icon={MessageCircle} value={current.chats} label="Chats" />
-              <Stat icon={Loader} value={current.messages} label="Nachrichten" />
-              <Stat icon={HardDrive} value={current.files} label="Dateien" />
-              <Stat
-                icon={AlertCircle}
-                value={current.errors}
-                label="Probleme"
-                warn={current.errors > 0}
-              />
-            </div>
-            <p className="import-current">
-              {current.current
-                ? `Lade ${current.current.title || current.current.id} …`
-                : "Verbinde mit schul.cloud …"}
-            </p>
-          </>
+          <div className="progress" role="progressbar" aria-label="Import läuft">
+            <div className="progress-sweep" />
+          </div>
         ) : null}
 
-        {done && !current.running ? (
+        {current.running || done ? (
           <div className="stat-row">
             <Stat icon={MessageCircle} value={current.chats} label="Chats" />
             <Stat icon={Loader} value={current.messages} label="Nachrichten" />
@@ -187,8 +136,16 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
           </div>
         ) : null}
 
+        {current.running ? (
+          <p className="import-current">
+            {current.current
+              ? `Lade ${current.current.title || current.current.id} …`
+              : "Verbinde mit schul.cloud …"}
+          </p>
+        ) : null}
+
         {current.status === "failed" ? (
-          <p className="dialog-error" role="alert">
+          <p className="panel-error" role="alert">
             <AlertCircle size={16} />
             {/* The importer normally supplies the reason; never leave a failed
                 run as a dead end with no explanation. Do not claim the archive
@@ -200,7 +157,7 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
         ) : null}
 
         {current.status === "partial" && !current.running ? (
-          <p className="dialog-note">
+          <p className="panel-note">
             <AlertCircle size={16} />
             {plural(current.failedChats, "Chat", "Chats")} und{" "}
             {current.failedFiles} Dateien müssen geprüft werden. Sie sind in der
@@ -223,7 +180,7 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
         ) : null}
 
         {formError ? (
-          <p className="dialog-error" role="alert">
+          <p className="panel-error" role="alert">
             <AlertCircle size={16} />{formError}
           </p>
         ) : null}
@@ -231,21 +188,21 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
         {!current.running && needsForm ? (
           <div className="credentials">
             <p className="credentials-note">
-              {current.hasEnvCredentials
-                ? "Es werden die Zugangsdaten aus der Umgebung verwendet."
-                : "Die Zugangsdaten gelten nur für diesen Lauf und werden nirgends gespeichert."}
+              Die Zugangsdaten gelten nur für diesen Lauf und werden nirgends
+              gespeichert.
             </p>
             <Field
               id="import-email"
-              label="schul.cloud E-Mail"
+              label="E-Mail"
               type="email"
               autoComplete="username"
+              inputRef={emailRef}
               value={credentials.email}
               onChange={(email) => setCredentials((c) => ({ ...c, email }))}
             />
             <Field
               id="import-password"
-              label="Account-Kennwort"
+              label="Kennwort"
               type="password"
               autoComplete="current-password"
               value={credentials.password}
@@ -264,15 +221,16 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
           </div>
         ) : null}
 
-        <footer className="dialog-foot">
-          {done && !current.running ? (
-            <p className="dialog-proof">
-              <Check size={16} />Archiv ist aktualisiert
-            </p>
-          ) : null}
-          {!current.running ? (
+        {done && !current.running ? (
+          <p className="panel-proof">
+            <Check size={15} />Archiv ist aktualisiert
+          </p>
+        ) : null}
+
+        {!current.running ? (
+          <div className="import-action">
             <button
-              className="primary-button"
+              className="import-start"
               type="button"
               onClick={begin}
               disabled={starting || (needsForm && !credentials.email)}
@@ -284,13 +242,15 @@ export function ImportPanel({ open, state, onClose, onFinished }: ImportPanelPro
               ) : done ? (
                 "Erneut importieren"
               ) : (
-                "Import starten"
+                <>
+                  <CloudDownload size={17} />Import starten
+                </>
               )}
             </button>
-          ) : null}
-        </footer>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -312,7 +272,7 @@ function Stat({
 }) {
   return (
     <div className={`stat ${warn ? "warn" : ""}`}>
-      <Icon size={17} />
+      <Icon size={16} />
       <strong>{value.toLocaleString("de-DE")}</strong>
       <span>{label}</span>
     </div>
@@ -326,6 +286,7 @@ function Field({
   autoComplete,
   value,
   onChange,
+  inputRef,
 }: {
   id: string;
   label: string;
@@ -333,12 +294,14 @@ function Field({
   autoComplete: string;
   value: string;
   onChange: (value: string) => void;
+  inputRef?: React.Ref<HTMLInputElement>;
 }) {
   return (
     <label className="import-field" htmlFor={id}>
       <span>{label}</span>
       <input
         id={id}
+        ref={inputRef}
         type={type}
         autoComplete={autoComplete}
         value={value}
