@@ -53,6 +53,34 @@ export function openArchive(directory) {
     );
     CREATE INDEX IF NOT EXISTS messages_chat_date
       ON messages(chat_type, chat_id, created_at, id);
+    -- External-content FTS5 over messages.text, keyed on the implicit rowid.
+    -- Search is the only way to find anything by what was said: with 10k
+    -- messages and no index, "who mentioned the UNICEF run" is unanswerable.
+    -- unicode61 folds accents, so "Ruckgabe" and "Ruckg" both find
+    -- "Rückgabe". It does not expand to the German ue/oe/ss spelling, so
+    -- "rueckgabe" finds nothing.
+    -- The column must be named 'text' to match messages.text: an
+    -- external-content FTS5 table reads its source column by name.
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      text,
+      content='messages',
+      content_rowid='rowid',
+      tokenize='unicode61 remove_diacritics 2'
+    );
+    -- Triggers keep the index in step with the upsert the importer does, so a
+    -- re-import updates it without a separate pass.
+    CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, coalesce(new.text, ''));
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, text)
+      VALUES ('delete', old.rowid, coalesce(old.text, ''));
+    END;
+    CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, text)
+      VALUES ('delete', old.rowid, coalesce(old.text, ''));
+      INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, coalesce(new.text, ''));
+    END;
     CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -209,6 +237,41 @@ export function normalizeReactions(value) {
   return [...merged.entries()]
     .map(([emoji, count]) => ({ emoji, count }))
     .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+}
+
+/**
+ * Rebuilds the full-text index from the messages table.
+ *
+ * Triggers keep it current for new writes, but an archive created before the
+ * index existed has nothing indexed, and a rebuild is the only way to backfill
+ * an external-content FTS table.
+ */
+export function rebuildSearchIndex(db) {
+  db.exec("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')");
+  return db.prepare("SELECT count(*) AS n FROM messages_fts").get().n;
+}
+
+/**
+ * Turns user input into a safe FTS5 MATCH expression.
+ *
+ * FTS5 has its own query syntax, so a bare "?" makes a search for `-` or `"` or
+ * `OR` throw. Every token is stripped of syntax characters and quoted, then the
+ * tokens are ANDed: all words must appear, which is what people expect from a
+ * search box. A trailing `*` on the last token is preserved as a prefix match.
+ */
+export function searchQuery(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+  // Punctuation separates words rather than disappearing: "Fahrrad,ORT" must
+  // become two terms, not the single nonsense token "FahrradORT".
+  const cleaned = raw
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+  if (!cleaned.length) return null;
+  const last = cleaned.length - 1;
+  return cleaned
+    .map((term, index) => (index === last ? `"${term}"*` : `"${term}"`))
+    .join(" AND ");
 }
 
 export function saveMessage(db, type, chatId, message) {

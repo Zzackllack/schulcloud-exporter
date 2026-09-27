@@ -34,6 +34,10 @@ a { color: inherit; }
 .search-field:focus-within { border-color: #3896b4; background: #fff; box-shadow: 0 0 0 3px #3896b41d; }
 .search-field input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--color-ink); font-size: 13px; }
 .search-field input::placeholder { color: #8794a1; }
+/* type="search" draws WebKit's own clear button, which would sit on top of
+   the real one next to it. */
+.search-field input::-webkit-search-cancel-button,
+.search-field input::-webkit-search-decoration { appearance: none; display: none; }
 .search-field button { display: grid; place-items: center; border: 0; background: transparent; color: #718395; }
 .filters { display: flex; gap: 5px; margin-top: 15px; }
 .filter { padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: #66788a; font-size: 12px; font-weight: 650; }
@@ -50,6 +54,16 @@ a { color: inherit; }
 .chat-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 4px; }
 .chat-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 700; }
 .chat-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--color-muted); font-size: 11px; }
+.search-row { min-height: 0; align-items: flex-start; padding: 9px 11px; }
+.search-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 3px; }
+.search-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.search-sender { overflow: hidden; flex: none; max-width: 45%; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.search-chat { overflow: hidden; flex: 1; color: #8493a1; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.search-date { flex: none; color: #8493a1; font-size: 10px; }
+.search-snippet { display: -webkit-box; overflow: hidden; color: #55697a; font-size: 11px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.search-mark { border-radius: 3px; background: #fdf0c8; color: inherit; font-weight: 700; }
+.search-summary { padding: 9px 11px 4px; color: #8493a1; font-size: 10px; }
+.search-footer { display: flex; align-items: center; gap: 6px; padding: 13px 11px 6px; color: #93a2ae; font-size: 10px; line-height: 1.4; }
 .chat-side { display: flex; align-self: stretch; flex-direction: column; align-items: flex-end; justify-content: space-between; color: #8493a1; white-space: nowrap; font-size: 10px; }
 .message-count { color: #517184; font-size: 11px; }
 .sidebar-message { display: flex; align-items: flex-start; gap: 8px; padding: 22px 15px; color: var(--color-muted); font-size: 13px; line-height: 1.5; }

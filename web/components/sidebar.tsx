@@ -4,6 +4,7 @@ import { useDeferredValue, useState } from "react";
 import type { ReactNode } from "react";
 import { Avatar } from "./avatar";
 import { shortDate } from "../format";
+import { SearchResults } from "./search-results";
 import type { Chat, Summary } from "../types";
 
 type Filter = "all" | "channel" | "conversation";
@@ -43,8 +44,8 @@ export function Sidebar({ chats, summary, error, importing, onImport, panel }: S
         </div>
         <label className="search-field">
           <Search size={18} aria-hidden="true" />
-          <span className="sr-only">Chats suchen</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Chats suchen" type="search" autoComplete="off" />
+          <span className="sr-only">Chats und Nachrichten durchsuchen</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Chats und Nachrichten durchsuchen" type="search" autoComplete="off" />
           {search ? <button type="button" onClick={() => setSearch("")} aria-label="Suche löschen"><X size={16} /></button> : null}
         </label>
         <div className="filters" role="group" aria-label="Chatfilter">
@@ -56,13 +57,19 @@ export function Sidebar({ chats, summary, error, importing, onImport, panel }: S
         </div>
       </div>
       {panel ?? (
-        <ChatList
-          chats={chats}
-          summary={summary}
-          error={error}
-          filter={filter}
-          deferredSearch={deferredSearch}
-        />
+        // A query of two characters or more searches message bodies; below
+        // that it is too noisy to be worth a round trip, so the list stays.
+        deferredSearch.trim().length >= 2 ? (
+          <SearchResults query={deferredSearch} />
+        ) : (
+          <ChatList
+            chats={chats}
+            summary={summary}
+            error={error}
+            filter={filter}
+            deferredSearch={deferredSearch}
+          />
+        )
       )}
       <footer className="sidebar-footer">
         {/* Not disabled while an import runs: this is the control you want to

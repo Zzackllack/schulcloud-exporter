@@ -2,6 +2,7 @@ import {
   conversationTitle,
   messageDate,
   normalizeReactions,
+  rebuildSearchIndex,
 } from "./database.mjs";
 
 /**
@@ -120,13 +121,25 @@ export function repairMessageState(db, output = console) {
     throw error;
   }
 
+  // Triggers keep the index current for new writes, but archives created before
+  // it existed have nothing indexed at all.
+  const indexed = rebuildSearchIndex(db);
+
   output.log(
     `${deletedMessages} gelöschte Nachrichten, ` +
       `${missingAttachments} mit fehlendem Anhang, ` +
       `${withReactions} Nachrichten mit ${reactionCount} Reaktionen, ` +
-      `${deletedPeople} gelöschte Konten erkannt.`,
+      `${deletedPeople} gelöschte Konten erkannt, ` +
+      `${indexed} Nachrichten für die Suche indiziert.`,
   );
-  return { deletedMessages, missingAttachments, withReactions, reactionCount, deletedPeople };
+  return {
+    deletedMessages,
+    missingAttachments,
+    withReactions,
+    reactionCount,
+    deletedPeople,
+    indexed,
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import type {
   ImportState,
   Message,
   MessagePage,
+  SearchResponse,
   Summary,
 } from "./types";
 
@@ -39,6 +40,11 @@ export function loadMessages(
     `/api/chats/${type}/${encodeURIComponent(id)}/messages?${params}`,
     signal,
   );
+}
+
+export function searchMessages(query: string, signal: AbortSignal) {
+  const params = new URLSearchParams({ q: query, limit: "50" });
+  return getJson<SearchResponse>(`/api/search?${params}`, signal);
 }
 
 export function exportUrl(chat: Chat) {

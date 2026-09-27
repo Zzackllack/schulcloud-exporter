@@ -9,8 +9,10 @@ import { after, test } from "node:test";
 import {
   normalizeReactions,
   openArchive,
+  rebuildSearchIndex,
   saveChat,
   saveMessage,
+  searchQuery,
 } from "../src/database.mjs";
 import { listMessages } from "../src/importer.mjs";
 import {
@@ -592,6 +594,124 @@ test("stores reactions on import and backfills them from the response", async ()
   } finally {
     server.close();
     db.close();
+  }
+});
+
+test("turns user input into a safe FTS5 match expression", () => {
+  // Every token is quoted and ANDed, so FTS5 syntax in the input is inert
+  // rather than a parse error.
+  assert.equal(searchQuery("Fahrrad"), '"Fahrrad"*');
+  assert.equal(searchQuery("Fahrrad Aktionstag"), '"Fahrrad" AND "Aktionstag"*');
+  // The prefix goes on the last searchable word, so a trailing "-" is dropped
+  // and "NEAR" keeps its prefix match.
+  assert.equal(searchQuery('" OR NEAR -'), '"OR" AND "NEAR"*');
+  assert.equal(searchQuery("a* b"), '"a" AND "b"*');
+  // Punctuation separates words instead of gluing them together.
+  assert.equal(searchQuery("Fahrrad,ORT"), '"Fahrrad" AND "ORT"*');
+  assert.equal(searchQuery("Hallo.Welt"), '"Hallo" AND "Welt"*');
+  // Nothing searchable left after stripping.
+  assert.equal(searchQuery(""), null);
+  assert.equal(searchQuery("   "), null);
+  assert.equal(searchQuery("-"), null);
+  assert.equal(searchQuery('"*()'), null);
+  assert.equal(searchQuery(undefined), null);
+});
+
+test("indexes message bodies and finds them again", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "fts", name: "Suche", encrypted: false });
+  saveMessage(db, "channel", "fts", { id: "s1", text: "Fahrrad Aktionstag am Foyer" });
+  saveMessage(db, "channel", "fts", { id: "s2", text: "Unicef Spendenlauf" });
+  saveMessage(db, "channel", "fts", { id: "s3", text: null });
+  saveMessage(db, "channel", "fts", { id: "s4", text: "Rückgabe der Lehrwerke" });
+
+  const server = startServer(db, directory, 0);
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const hit = await (await fetch(`${base}/api/search?q=Fahrrad`)).json();
+    assert.equal(hit.results.length, 1);
+    assert.equal(hit.results[0].id, "s1");
+    assert.equal(hit.results[0].chat_title, "Suche");
+    // Matches come back wrapped in control sentinels, never HTML.
+    assert.match(hit.results[0].snippet, /\u0001Fahrrad\u0002/);
+    assert.doesNotMatch(hit.results[0].snippet, /<[a-z]/i);
+
+    // Both terms must be present.
+    assert.equal(
+      (await (await fetch(`${base}/api/search?q=${encodeURIComponent("Fahrrad Aktionstag")}`)).json()).results.length,
+      1,
+    );
+    assert.equal(
+      (await (await fetch(`${base}/api/search?q=${encodeURIComponent("Fahrrad Unicef")}`)).json()).results.length,
+      0,
+    );
+    // unicode61 folds accents, so "Ruckgabe" finds "Rückgabe" and a prefix of
+    // the folded form matches too. It does not expand to the German ue/oe/ss
+    // spelling, so "rueckgabe" finds nothing.
+    for (const [q, expected] of [
+      ["R%C3%BCckgabe", 1],
+      ["Ruckgabe", 1],
+      ["Ruckg", 1],
+      ["rueckgabe", 0],
+    ]) {
+      assert.equal(
+        (await (await fetch(`${base}/api/search?q=${q}`)).json()).results.length,
+        expected,
+        `q=${q}`,
+      );
+    }
+    // Hostile and empty input must not 500.
+    for (const q of ['"><img src=x>', "NEAR(", "*", ""]) {
+      const response = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`);
+      assert.equal(response.status, 200, `q=${q}`);
+    }
+
+    // Re-saving a message must update the index, not duplicate or orphan it.
+    saveMessage(db, "channel", "fts", { id: "s1", text: "Fahrrad, jetzt in der Turnhalle" });
+    assert.equal(
+      (await (await fetch(`${base}/api/search?q=Turnhalle`)).json()).results.length,
+      1,
+    );
+    // The previous text is gone from the index, not merely superseded.
+    assert.equal(
+      (await (await fetch(`${base}/api/search?q=Aktionstag`)).json())
+        .results.filter((r) => r.id === "s1").length,
+      0,
+    );
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test("rebuilds the search index for archives created before it existed", async () => {
+  const legacy = await mkdtemp(join(tmpdir(), "schulcloud-fts-"));
+  const db = openArchive(legacy);
+  db.prepare("INSERT INTO chats (type, id, title, raw_json) VALUES ('channel','old','Alt','{}')").run();
+  // Written with the index triggers disabled, as if the table predates them.
+  db.exec("DROP TRIGGER messages_fts_insert");
+  db.prepare("INSERT INTO messages (id, chat_type, chat_id, text, decryption_state, raw_json) VALUES ('o1','channel','old','Fahrrad Aktionstag','plain','{}')").run();
+  db.exec("CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, coalesce(new.text, '')); END");
+  // An external-content FTS table reads count(*) from the content table, so
+  // ask the index itself whether the row is findable.
+  const indexed = () =>
+    db.prepare("SELECT count(*) AS n FROM messages_fts WHERE messages_fts MATCH 'Fahrrad'").get().n;
+  assert.equal(indexed(), 0);
+
+  assert.equal(rebuildSearchIndex(db), 1);
+  assert.equal(indexed(), 1);
+  const server = startServer(db, legacy, 0);
+  await once(server, "listening");
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/search?q=Fahrrad`,
+    );
+    assert.equal((await response.json()).results.length, 1);
+  } finally {
+    server.close();
+    db.close();
+    await rm(legacy, { recursive: true, force: true });
   }
 });
 

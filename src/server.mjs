@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { blobPath } from "./blobs.mjs";
 import { publicImportState, startImport, subscribe } from "./import-state.mjs";
+import { searchQuery } from "./database.mjs";
 
 const webDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
 const assetTypes = new Map([
@@ -78,6 +79,57 @@ export function createApp(db, directory) {
       (SELECT MAX(created_at) FROM messages WHERE chat_type=chats.type AND chat_id=chats.id) AS latest_at
       FROM chats ORDER BY latest_at DESC, title COLLATE NOCASE`).all();
     return context.json(chats);
+  });
+
+  app.get("/api/search", (context) => {
+    const match = searchQuery(context.req.query("q"));
+    if (!match) return context.json({ query: "", results: [] });
+    const limit = Math.min(
+      Math.max(Number(context.req.query("limit")) || 50, 1),
+      200,
+    );
+    const chatId = context.req.query("chat") || null;
+    // bm25 ranks lower-is-better, so ascending is best-first. The snippet is
+    // delimited with sentinels rather than HTML tags: message bodies are other
+    // people's text, and this must never become an injection point.
+    let sql = `SELECT m.id, m.chat_type, m.chat_id, m.created_at, m.kind,
+        c.title AS chat_title,
+        coalesce(p.display_name, 'Unbekannte Person') AS sender_name,
+        snippet(messages_fts, 0, char(1), char(2), '…', 14) AS snippet,
+        bm25(messages_fts) AS rank
+      FROM messages_fts
+      JOIN messages m ON m.rowid = messages_fts.rowid
+      JOIN chats c ON c.type = m.chat_type AND c.id = m.chat_id
+      LEFT JOIN people p ON p.id = m.sender_id
+      WHERE messages_fts MATCH ? AND m.text IS NOT NULL AND m.text <> ''`;
+    const params = [match];
+    if (chatId) {
+      sql += " AND m.chat_type = ? AND m.chat_id = ?";
+      params.push(context.req.query("type") === "conversation" ? "conversation" : "channel", chatId);
+    }
+    sql += " ORDER BY rank LIMIT ?";
+    params.push(limit);
+    let results;
+    try {
+      results = db.prepare(sql).all(...params);
+    } catch {
+      // Defence in depth: searchQuery already neutralises FTS syntax, so this
+      // should be unreachable. Answer with nothing rather than a 500.
+      return context.json({ query: String(context.req.query("q") || ""), results: [] });
+    }
+    return context.json({
+      query: String(context.req.query("q") || ""),
+      results: results.map((row) => ({
+        id: row.id,
+        chat_type: row.chat_type,
+        chat_id: row.chat_id,
+        chat_title: row.chat_title,
+        sender_name: row.sender_name,
+        created_at: row.created_at,
+        kind: row.kind,
+        snippet: row.snippet,
+      })),
+    });
   });
 
   app.get("/api/import", (context) => context.json(publicImportState()));

@@ -59,6 +59,23 @@ export interface MessagePage {
   messages: Message[];
 }
 
+export interface SearchHit {
+  id: string;
+  chat_type: ChatType;
+  chat_id: string;
+  chat_title: string;
+  sender_name: string;
+  created_at: string | null;
+  kind: string;
+  /** Match runs are wrapped in \u0001 / \u0002 sentinels, never HTML. */
+  snippet: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchHit[];
+}
+
 export type ImportStatus =
   | "idle"
   | "running"
