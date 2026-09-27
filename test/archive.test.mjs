@@ -83,6 +83,21 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
   }
 });
 
+test("prefers absolute created_at timestamps over relative time fields", async () => {
+  const db = openArchive(directory);
+  saveChat(db, "channel", { id: "8", name: "Zeit", encrypted: false });
+  saveMessage(db, "channel", "8", {
+    id: "43",
+    text: "Zeitstempel",
+    created_at: "2024-01-02T03:04:05.000Z",
+    time: 88,
+    micro_time: 88000000,
+  });
+  const row = db.prepare("SELECT created_at FROM messages WHERE id=?").get("43");
+  assert.equal(row.created_at, "2024-01-02T03:04:05.000Z");
+  db.close();
+});
+
 test("loads older messages even when timestamps are missing", async () => {
   const db = openArchive(directory);
   saveChat(db, "conversation", { id: "missing-date", name: "Alt" });

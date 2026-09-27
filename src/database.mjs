@@ -125,18 +125,23 @@ function conversationTitle(chat, ownId) {
 }
 
 function messageDate(message) {
-  if (message.micro_time) {
-    const value = Number(message.micro_time);
-    if (Number.isFinite(value)) return new Date(value / 1000).toISOString();
+  const createdAt = message.created_at || message.created;
+  if (typeof createdAt === "string" && createdAt.trim()) {
+    const parsed = new Date(createdAt);
+    if (!Number.isNaN(parsed.valueOf())) return parsed.toISOString();
   }
-  if (message.time) {
-    const value = Number(message.time);
-    if (Number.isFinite(value)) return new Date(value * 1000).toISOString();
+
+  const micros = Number(message.micro_time);
+  if (Number.isFinite(micros) && micros > 0) {
+    return new Date(micros / 1000).toISOString();
   }
-  const value = message.created_at || message.created;
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? null : parsed.toISOString();
+
+  const seconds = Number(message.time);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return new Date(seconds * 1000).toISOString();
+  }
+
+  return null;
 }
 
 export function saveMessage(db, type, chatId, message) {
