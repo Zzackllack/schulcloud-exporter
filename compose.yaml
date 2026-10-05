@@ -1,0 +1,46 @@
+# Schulcloud Exporter -- local archive in Docker.
+#
+#   cp .env.example .env   # fill in credentials if you want imports without the dialog
+#   docker compose up -d --build
+#   open http://127.0.0.1:4317
+#
+# One-off jobs go through the same image and the same volume:
+#
+#   docker compose run --rm archive node src/cli.mjs export
+#   docker compose run --rm archive node src/cli.mjs repair
+name: schulcloud-archive
+
+services:
+  archive:
+    build:
+      context: .
+    image: schulcloud-archive:local
+    # Published on the host's loopback interface only -- the archive holds other
+    # people's messages, and nothing here is authenticated. The API accepts an
+    # import only when the Host header is 127.0.0.1/localhost, so reaching it
+    # under a LAN name still shows the chats but refuses imports.
+    # Use SCHULCLOUD_BIND=0.0.0.0 only on a network you trust.
+    ports:
+      - "${SCHULCLOUD_BIND:-127.0.0.1}:${SCHULCLOUD_PORT:-4317}:4317"
+    environment:
+      SCHULCLOUD_ARCHIVE_DIR: /data
+      # Optional. When all three are set, an import started from the viewer
+      # needs no password in the browser. Leave them empty to type them into
+      # the dialog instead; they are never written to the database or disk.
+      # Note that `docker inspect` shows whatever ends up here.
+      SCHULCLOUD_EMAIL: "${SCHULCLOUD_EMAIL:-}"
+      SCHULCLOUD_PASSWORD: "${SCHULCLOUD_PASSWORD:-}"
+      SCHULCLOUD_SECURITY_PASSWORD: "${SCHULCLOUD_SECURITY_PASSWORD:-}"
+    volumes:
+      # The SQLite database, the blobs and the JSON export all live here.
+      # Back this up, do not just copy the .sqlite file.
+      - archive-data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  archive-data:

@@ -1,0 +1,12 @@
+# Only the build inputs travel to the daemon. node_modules/, dist/ and
+# archive-data/ are either rebuilt inside the image or mounted at runtime;
+# copying a host-built tree in would only serve to confuse.
+/.git
+/.gitignore
+/.env
+/node_modules
+/dist
+/archive-data
+/test
+/.DS_Store
+*.md
