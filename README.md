@@ -11,7 +11,7 @@ Schulcloud Exporter liest Channels sowie aktive und archivierte Konversationen �
 
 ## Start
 
-Voraussetzung: Node.js ab 24.15 und pnpm 11.11.0.
+Voraussetzung: Node.js ab 24.15 und pnpm 11.11.0 — oder Docker mit Compose, siehe [Docker](#docker).
 
 ```sh
 pnpm install --frozen-lockfile
@@ -24,6 +24,26 @@ Die Ansicht ist unter <http://127.0.0.1:4317> erreichbar. `pnpm sync` fragt E-Ma
 Die Webansicht verwendet React, React Router, Tailwind CSS und Vite; die lokale API läuft mit Hono auf Node.js. Das Suchfeld durchsucht neben Chat-Titeln auch alle Nachrichtentexte über einen FTS5-Index; Wörter werden mit UND verknüpft, Umlaute werden gefaltet (`Ruckgabe` findet `Rückgabe`, die Schreibweise `rueckgabe` jedoch nicht). Sie ist schreibgeschützt: Nachrichten, Chats und Dateien lassen sich nur lesen. Einzige Ausnahme ist der Import, den die Webansicht starten kann. Nachrichtentexte werden als Markdown dargestellt, inklusive Autolinks für die von den Beteiligten oft ohne Syntax eingefügten URLs. Da die Inhalte von anderen Personen stammen, rendert `react-markdown` direkt in React-Elemente statt über `dangerouslySetInnerHTML`; eingebettetes HTML bleibt inaktiv. Der Import läuft im Hintergrund; der Fortschritt kommt per Server-Sent-Events an die Oberfläche, sodass ein Neuladen einen laufenden Import wieder aufnimmt. Sind `SCHULCLOUD_EMAIL`, `SCHULCLOUD_PASSWORD` und `SCHULCLOUD_SECURITY_PASSWORD` gesetzt, nutzt der Import diese und der Browser sieht kein Kennwort. Andernfalls fragt der Dialog sie ab; sie gelten nur für diesen Lauf und werden nicht in die Datenbank oder auf die Platte geschrieben. Da der Import eine Anmeldung auslöst, akzeptiert die API ihn nur von `127.0.0.1`/`localhost` und nur als `application/json` — damit kann keine fremde Seite einen Import auf diesem Rechner auslösen. Die Auswahl orientiert sich an [Better T Stack](https://www.better-t-stack.dev/). Das bestehende SQLite-Archiv und der Importer bleiben kompatibel. Ein ORM oder eine Anmeldung würden für diesen lokalen Betrachter zusätzliche Migrationen und Angriffsfläche schaffen und sind deshalb nicht eingebaut.
 
 Für die Entwicklung startet `pnpm dev` API und Webansicht zusammen; die Ausgaben beider Prozesse sind mit `api` und `web` gekennzeichnet. `pnpm dev:api` startet nur die API, `pnpm dev:web` nur Vite auf <http://127.0.0.1:5173>. `pnpm serve` erstellt zuerst den Produktions-Build. `pnpm typecheck` und `pnpm test` prüfen Typen und Archiv/API-Verhalten.
+
+## Docker
+
+```sh
+cp .env.example .env   # Zugangsdaten eintragen, wenn der Import ohne Dialog laufen soll
+docker compose up -d --build
+```
+
+Die Ansicht ist danach unter <http://127.0.0.1:4317> erreichbar. Das Image baut den Produktions-Build der Webansicht mit pnpm und Vite, startet danach `node src/cli.mjs serve` als Benutzer `node` (uid 1000) und legt Archiv, Blobs und Exporte in dem benannten Volume `archive-data` ab. Der Port wird nur auf `127.0.0.1` des Hosts veröffentlicht; `SCHULCLOUD_PORT` ändert den Port, `SCHULCLOUD_BIND=0.0.0.0` die Schnittstelle.
+
+Einmalige Aufgaben laufen über dasselbe Image und dasselbe Volume:
+
+```sh
+docker compose run --rm archive node src/cli.mjs export
+docker compose run --rm archive node src/cli.mjs repair
+```
+
+Sichern lässt sich der Bestand mit `docker compose cp archive:/data ./archiv-backup` — oder, wenn das Archiv an anderer Stelle liegen soll, mit einem Bind-Mount statt des Volumes (`./archive-data:/data`); dann muss das Verzeichnis dem uid 1000 des Containers gehören.
+
+Im Netzwerk einer anderen Maschine zu lesen funktioniert, einen Import dort zu starten aber nicht: die API nimmt schreibende Anfragen nur mit einem `Host`-Header auf `127.0.0.1`, `localhost` oder `[::1]` an, sonst antwortet sie mit 403. Das ist der Schutz gegen DNS-Rebinding und localhost-CSRF und bleibt auch im Container aktiv. Für einen Import aus der Ferne `SCHULCLOUD_EMAIL`, `SCHULCLOUD_PASSWORD` und `SCHULCLOUD_SECURITY_PASSWORD` setzen und `docker compose exec archive node src/cli.mjs import` verwenden.
 
 `pnpm export` erzeugt JSONL-Dateien für die normalisierten Tabellen in `archive-data/json-export/`, einschließlich `metadata` und `import_runs`. `pnpm repair` berechnet Zeitstempel, Konversationstitel sowie Lösch-, Anhangs-, Reaktions- und Linkstatus neu aus den gespeicherten API-Antworten, ohne Netzwerkzugriff. Ein Datumsfeld im Chat öffnet den Verlauf um einen gewählten Tag, ohne ihn seitenweise durchzuklicken. Die Webansicht zeigt den Verlauf der letzten Importe, exportiert einzelne Chats als JSON und das gesamte Archiv als eine NDJSON-Datei (`/api/export`); die Dateien selbst liegen weiterhin unter `archive-data/blobs/` und sind nicht eingebettet. Sichere für eine vollständige lokale Kopie das gesamte Verzeichnis `archive-data/`. Ein unterbrochener Import kann erneut gestartet werden; gespeicherte Nachrichten und Dateien werden wiederverwendet.
 
@@ -48,7 +68,7 @@ Schulcloud Exporter reads channels and active or archived conversations page by 
 
 ## Get started
 
-Requires Node.js 24.15 or newer and pnpm 11.11.0.
+Requires Node.js 24.15 or newer and pnpm 11.11.0, or Docker with Compose, see [Docker](#docker).
 
 ```sh
 pnpm install --frozen-lockfile
@@ -61,6 +81,26 @@ Open <http://127.0.0.1:4317>. `pnpm sync` prompts for your email address, accoun
 The viewer uses React, React Router, Tailwind CSS, and Vite. Hono serves the local API on Node.js. The search field covers chat titles and every message body via an FTS5 index; words are ANDed, and accents are folded, so `Ruckgabe` finds `Rückgabe` while the `rueckgabe` spelling does not. It is read-only: messages, chats, and files can only be read. The one exception is the import, which the viewer can start. Message bodies render as Markdown, including autolinks for the bare URLs people often paste. Because the content comes from other people, `react-markdown` renders straight to React elements instead of going through `dangerouslySetInnerHTML`, and embedded HTML stays inert. An import runs in the background and reports progress over server-sent events, so reloading the page rejoins a run already in progress. With `SCHULCLOUD_EMAIL`, `SCHULCLOUD_PASSWORD`, and `SCHULCLOUD_SECURITY_PASSWORD` set, the import uses those and the browser never handles a password. Otherwise the dialog asks for them; they apply to that run only and are never written to the database or to disk. Because an import triggers a login, the API accepts one only from `127.0.0.1`/`localhost` and only as `application/json`, so no foreign page can start an import on this machine. The selection follows [Better T Stack](https://www.better-t-stack.dev/), while keeping the existing SQLite archive and importer compatible. An ORM and authentication would add migrations and unnecessary surface area to this local viewer, so they are not included.
 
 For development, `pnpm dev` starts the API and the viewer together, with each process's output labelled `api` or `web`. Use `pnpm dev:api` for the API alone or `pnpm dev:web` for Vite alone on <http://127.0.0.1:5173>. `pnpm serve` builds the production viewer first. Use `pnpm typecheck` and `pnpm test` to check types and archive/API behavior.
+
+## Docker
+
+```sh
+cp .env.example .env   # add credentials if imports should run without the dialog
+docker compose up -d --build
+```
+
+The viewer is then reachable at <http://127.0.0.1:4317>. The image builds the production viewer with pnpm and Vite, runs `node src/cli.mjs serve` as user `node` (uid 1000), and keeps the archive, blobs and exports in the named volume `archive-data`. The port is published on the host's `127.0.0.1` only; `SCHULCLOUD_PORT` changes the port and `SCHULCLOUD_BIND=0.0.0.0` the interface.
+
+One-off jobs use the same image and the same volume:
+
+```sh
+docker compose run --rm archive node src/cli.mjs export
+docker compose run --rm archive node src/cli.mjs repair
+```
+
+Back up the archive with `docker compose cp archive:/data ./archive-backup` — or keep it somewhere else by bind-mounting a directory (`./archive-data:/data`) instead of the volume, in which case that directory has to belong to uid 1000.
+
+Reading the viewer from another machine on the network works, starting an import there does not: the API accepts a write only when the `Host` header is `127.0.0.1`, `localhost` or `[::1]`, and answers 403 otherwise. That is the protection against DNS rebinding and localhost CSRF, and it stays active inside the container. To import from elsewhere, set `SCHULCLOUD_EMAIL`, `SCHULCLOUD_PASSWORD` and `SCHULCLOUD_SECURITY_PASSWORD` and run `docker compose exec archive node src/cli.mjs import`.
 
 `pnpm export` writes JSONL files for the normalized tables to `archive-data/json-export/`, including `metadata` and `import_runs`. `pnpm repair` recomputes message timestamps, conversation titles, and deletion/attachment/reaction/link state from the stored API responses without network access. A date field in the chat opens the history around a chosen day instead of paging to it. The viewer lists recent import runs, exports an individual chat as JSON, and exports the whole archive as one NDJSON file (`/api/export`); the file contents still live under `archive-data/blobs/` and are not inlined. Back up the entire `archive-data/` directory to preserve the full local archive. You can rerun an interrupted import; saved messages and files are reused.
 
