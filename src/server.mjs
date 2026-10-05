@@ -472,9 +472,15 @@ function toPublicMessage(row) {
   };
 }
 
-export function startServer(db, directory, port = 4317) {
+// `host` defaults to the loopback interface: a desktop run should not be
+// reachable from the network. It is a parameter rather than a constant only
+// because a container cannot be entered on 127.0.0.1, so the image passes
+// 0.0.0.0 and leaves the port publishing to whoever runs it.
+export function startServer(db, directory, port = 4317, host = "127.0.0.1") {
+  // A wildcard bind is not an address you can visit; print the loopback one.
+  const shown = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   return serve(
-    { fetch: createApp(db, directory).fetch, hostname: "127.0.0.1", port },
-    (info) => console.log(`Archiv: http://127.0.0.1:${info.port}`),
+    { fetch: createApp(db, directory).fetch, hostname: host, port },
+    (info) => console.log(`Archiv: http://${shown}:${info.port}`),
   );
 }

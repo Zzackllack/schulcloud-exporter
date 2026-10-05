@@ -24,7 +24,15 @@ if (command === "import") {
   }
   db.close();
 } else if (command === "serve") {
-  startServer(db, directory, Number(process.env.PORT) || 4317);
+  // HOST is only interesting in a container, where 127.0.0.1 would keep the
+  // port unreachable from the host. Left unset, this stays a desktop-local
+  // server.
+  startServer(
+    db,
+    directory,
+    Number(process.env.PORT) || 4317,
+    process.env.HOST || "127.0.0.1",
+  );
 } else if (command === "export") {
   try {
     console.log(`JSON: ${await exportJson(db, directory)}`);
