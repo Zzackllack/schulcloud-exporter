@@ -16,9 +16,11 @@
     "typecheck": "tsc --noEmit",
     "export": "node src/cli.mjs export",
     "repair": "node src/cli.mjs repair",
+    "migrate": "node src/cli.mjs migrate",
     "test": "pnpm build && node --test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1148.0",
     "@hono/node-server": "^2.1.1",
     "hono": "^4.13.9",
     "react": "^19.3.0",
