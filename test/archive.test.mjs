@@ -22,6 +22,12 @@ import {
   repairTimestamps,
 } from "../src/repair.mjs";
 import {
+  createBlobStorage,
+  saveBlob,
+  blobCounts,
+} from "../src/storage.mjs";
+import { describeSettings, loadSettings, saveSettings } from "../src/settings.mjs";
+import {
   importHistory,
   importStatus,
   resetImportState,
@@ -30,6 +36,7 @@ import {
 import { startServer } from "../src/server.mjs";
 
 const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
+const storage = createBlobStorage(await loadSettings(directory), directory);
 after(() => rm(directory, { recursive: true, force: true }));
 
 test("pages through an older history without the PDF date limit", async () => {
@@ -79,7 +86,7 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
   saveMessage(db, "channel", "7", message);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM messages").get().n, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM files").get().n, 1);
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -387,7 +394,7 @@ test("serves deletion state and names deleted accounts honestly", async () => {
     text: "Hallo",
     sender: { id: "12", deleted: "1705186840" },
   });
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -409,7 +416,7 @@ test("serves deletion state and names deleted accounts honestly", async () => {
 
 test("keeps the archive read-only and only allows a guarded import trigger", async () => {
   const db = openArchive(directory);
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, init = {}) =>
@@ -457,7 +464,7 @@ test("keeps the archive read-only and only allows a guarded import trigger", asy
 
 test("rejects import triggers that did not come from this machine", async () => {
   const db = openArchive(directory);
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const port = server.address().port;
   // fetch silently drops `host` -- it is a forbidden header name -- so this has
@@ -499,7 +506,7 @@ test("runs at most one import at a time", async () => {
   resetImportState();
   const db = openArchive(directory);
   // No credentials and no env: the attempt must fail before any network work.
-  await assert.rejects(() => startImport(db, directory, null), (error) => {
+  await assert.rejects(() => startImport(db, storage, null), (error) => {
     assert.equal(error.status, 400);
     return true;
   });
@@ -507,10 +514,10 @@ test("runs at most one import at a time", async () => {
   process.env.SCHULCLOUD_EMAIL = "a@example.org";
   process.env.SCHULCLOUD_PASSWORD = "x";
   process.env.SCHULCLOUD_SECURITY_PASSWORD = "y";
-  const first = startImport(db, directory, null).catch(() => {});
+  const first = startImport(db, storage, null).catch(() => {});
   try {
     assert.equal(importStatus().status, "running");
-    const second = await startImport(db, directory, null).then(
+    const second = await startImport(db, storage, null).then(
       () => null,
       (error) => error,
     );
@@ -585,7 +592,7 @@ test("stores reactions on import and backfills them from the response", async ()
   assert.equal(result.reactionCount, 12);
   assert.equal(read("r1"), JSON.stringify([{ emoji: "👍", count: 12 }]));
 
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -631,7 +638,7 @@ test("indexes message bodies and finds them again", async () => {
   saveMessage(db, "channel", "fts", { id: "s3", text: null });
   saveMessage(db, "channel", "fts", { id: "s4", text: "Rückgabe der Lehrwerke" });
 
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -707,7 +714,7 @@ test("rebuilds the search index for archives created before it existed", async (
 
   assert.equal(rebuildSearchIndex(db), 1);
   assert.equal(indexed(), 1);
-  const server = startServer(db, legacy, 0);
+  const server = startServer(db, createBlobStorage(await loadSettings(legacy), legacy), 0);
   await once(server, "listening");
   try {
     const response = await fetch(
@@ -787,7 +794,7 @@ test("stores link previews and backfills them from the response", async () => {
   assert.equal(result.linkCount, 1);
   assert.equal(JSON.parse(read("l1")).length, 1);
 
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   try {
     const page = await (
@@ -820,7 +827,7 @@ test("opens a window of messages around a requested date", async () => {
       sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
     });
   }
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   const around = (date) =>
@@ -868,7 +875,7 @@ test("streams the whole archive as newline-delimited JSON", async () => {
     text: "Zeile eins\nund zwei",
     sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
   });
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
@@ -919,7 +926,7 @@ test("reports previous import runs", async () => {
   assert.equal(mine[1].error, "Anmeldung abgelehnt");
   assert.equal(history[0].id >= history[1].id, true, "newest first");
 
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   try {
     const body = await (
@@ -944,7 +951,7 @@ test("loads older messages even when timestamps are missing", async () => {
       text: id,
     });
   }
-  const server = startServer(db, directory, 0);
+  const server = startServer(db, storage, 0);
   await once(server, "listening");
   const base = `http://127.0.0.1:${server.address().port}`;
   try {

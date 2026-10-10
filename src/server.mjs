@@ -4,8 +4,20 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { blobPath } from "./blobs.mjs";
-import { publicImportState, startImport, subscribe } from "./import-state.mjs";
+import { blobCounts, createS3Store } from "./storage.mjs";
+import {
+  publicImportState,
+  startImport,
+  subscribe,
+} from "./import-state.mjs";
+import {
+  describeSettings,
+  lockedFields,
+  loadSettings,
+  saveSettings,
+  validateSettings,
+} from "./settings.mjs";
+import { publicStorageJob, startStorageJob, subscribeStorage } from "./storage-jobs.mjs";
 import { searchQuery } from "./database.mjs";
 
 const webDirectory = fileURLToPath(new URL("../dist/", import.meta.url));
@@ -18,8 +30,10 @@ const assetTypes = new Map([
 ]);
 
 // The only routes allowed to change anything. Everything else stays read-only,
-// which is the guarantee the rest of the API is built on.
-const WRITABLE = /^\/api\/import(\/|$)/;
+// which is the guarantee the rest of the API is built on. The settings routes
+// are here because they decide where future blobs go and can move the archive
+// between disk and a bucket.
+const WRITABLE = /^\/(api\/import|api\/settings)(\/|$)/;
 
 // A remote page can point a hostname it controls at 127.0.0.1, so the Host
 // header -- not the socket -- is what proves the caller meant this viewer.
@@ -31,7 +45,7 @@ function isLocalHost(headers) {
   return LOCAL_HOSTS.has(name) || LOCAL_HOSTS.has(host);
 }
 
-export function createApp(db, directory) {
+export function createApp(db, storage) {
   const app = new Hono();
   app.use("*", async (context, next) => {
     context.header("X-Content-Type-Options", "nosniff");
@@ -144,7 +158,7 @@ export function createApp(db, directory) {
       // Empty body is fine: it means "use the environment credentials".
     }
     try {
-      await startImport(db, directory, body);
+      await startImport(db, storage, body);
       return context.json(publicImportState(db), 202);
     } catch (error) {
       return context.json(
@@ -180,6 +194,107 @@ export function createApp(db, directory) {
       // download, and notice when the client goes away. Sent without an event
       // name so it arrives as a plain `message`, which the client does not
       // treat as state.
+      while (open) {
+        await stream.sleep(15000);
+        if (!open) break;
+        await stream.writeSSE({ data: "" }).catch(() => {
+          open = false;
+        });
+      }
+    }),
+  );
+
+  // ---------------------------------------------------------------------------
+  // Storage settings. Writes here decide where the next blob lands, so they sit
+  // behind the same localhost-and-JSON gate as the import.
+  // ---------------------------------------------------------------------------
+
+  app.get("/api/settings", (context) =>
+    context.json(settingsResponse(db, storage)),
+  );
+
+  app.put("/api/settings", async (context) => {
+    let body = {};
+    try {
+      body = await context.req.json();
+    } catch {
+      // An empty body means "nothing changed", which is not worth rejecting.
+    }
+    let saved;
+    try {
+      saved = await saveSettings(storage.directory, body);
+    } catch (error) {
+      return context.json({ error: String(error.message || error) }, error.status || 500);
+    }
+    // Re-read rather than reusing the written file: the environment still
+    // overrides it, and the storage has to run with what would actually be read
+    // on the next start.
+    const effective = await loadSettings(storage.directory);
+    storage.reconfigure(effective);
+    return context.json(settingsResponse(db, storage));
+  });
+
+  // Probes a draft, so a bucket can be checked before it is saved. The secret is
+  // never part of the answer.
+  app.post("/api/settings/test", async (context) => {
+    let body = {};
+    try {
+      body = await context.req.json();
+    } catch {
+      /* no draft: falls back to the stored settings */
+    }
+    const submitted = body.s3 ?? {};
+    // The form never receives the stored secret, so an empty field means "the
+    // key already on disk", not "remove the key".
+    const draft = {
+      ...storage.settings.s3,
+      ...submitted,
+      secretAccessKey: submitted.secretAccessKey || storage.settings.s3.secretAccessKey,
+    };
+    const errors = validateSettings({ backend: "s3", s3: draft });
+    if (errors.length) return context.json({ ok: false, error: errors.join(" ") }, 400);
+    try {
+      await createS3Store(draft).probe();
+      return context.json({ ok: true });
+    } catch (error) {
+      return context.json({ ok: false, error: describeError(error) }, 502);
+    }
+  });
+
+  app.post("/api/settings/migrate", async (context) => {
+    let body = {};
+    try {
+      body = await context.req.json();
+    } catch {
+      /* empty body is rejected below */
+    }
+    try {
+      return context.json(await startStorageJob(db, storage, body.backend), 202);
+    } catch (error) {
+      return context.json({ error: String(error.message || error) }, error.status || 500);
+    }
+  });
+
+  // Migration progress, same one-way shape as the import stream. A copy of a
+  // real archive takes minutes, so the viewer needs to show it without polling.
+  app.get("/api/settings/events", (context) =>
+    streamSSE(context, async (stream) => {
+      let open = true;
+      stream.onAbort(() => {
+        open = false;
+        unsubscribe();
+      });
+      const unsubscribe = subscribeStorage(() => {
+        stream
+          .writeSSE({ event: "progress", data: JSON.stringify(publicStorageJob()) })
+          .catch(() => {
+            open = false;
+          });
+      });
+      await stream.writeSSE({
+        event: "snapshot",
+        data: JSON.stringify(publicStorageJob()),
+      });
       while (open) {
         await stream.sleep(15000);
         if (!open) break;
@@ -332,8 +447,10 @@ export function createApp(db, directory) {
               format: "schulcloud-archive-v1",
               exported_at: new Date().toISOString(),
               tables: datasets.map(([name]) => name),
-              // File contents live beside the database and are not inlined.
-              blobs: "archive-data/blobs/",
+              // Where the bytes are: a directory name, or an object key prefix
+              // that includes the scheme and bucket. Each row's storage and
+              // object_key columns say the same thing for one blob.
+              blobs: storageManifest(storage),
             }),
           );
           for (const [table, query] of datasets) {
@@ -347,11 +464,13 @@ export function createApp(db, directory) {
         }
       },
     });
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Content-Disposition": buildContentDisposition("schulcloud-archiv.ndjson"),
-      },
+    // context.body rather than a bare Response: Hono only carries the
+    // middleware headers into what it builds itself, and a file that holds
+    // every message in the archive should not be the one response without
+    // nosniff and no-store.
+    return context.body(stream, 200, {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Content-Disposition": buildContentDisposition("schulcloud-archiv.ndjson"),
     });
   });
 
@@ -372,19 +491,26 @@ export function createApp(db, directory) {
     });
   });
 
+  // Attachments and avatars, whichever backend holds them. The body is streamed
+  // rather than buffered: a 200 MB video should not sit in one array, and the
+  // browser shows progress only if bytes start moving before the last one
+  // arrives.
   app.get("/media/:hash", async (context) => {
     const hash = context.req.param("hash");
     if (!/^[0-9a-f]{64}$/.test(hash)) return context.json({ error: "Datei nicht gefunden" }, 404);
-    const item = db.prepare("SELECT media_type FROM blobs WHERE hash=?").get(hash);
-    if (!item) return context.json({ error: "Datei nicht gefunden" }, 404);
-    try {
-      const bytes = await readFile(blobPath(directory, hash));
-      context.header("Content-Type", item.media_type || "application/octet-stream");
-      return context.body(bytes);
-    } catch (error) {
-      if (error.code === "ENOENT") return context.json({ error: "Datei nicht gefunden" }, 404);
-      throw error;
-    }
+    const row = db
+      .prepare("SELECT hash, storage, object_key, media_type FROM blobs WHERE hash=?")
+      .get(hash);
+    if (!row) return context.json({ error: "Datei nicht gefunden" }, 404);
+    const object = await storage.open(row);
+    if (!object) return context.json({ error: "Datei nicht gefunden" }, 404);
+    // context.body rather than a bare Response: Hono only merges the middleware
+    // headers into what it builds itself, and a body the browser renders must
+    // not lose nosniff.
+    return context.body(object.body, 200, {
+      "Content-Type": row.media_type || "application/octet-stream",
+      ...(object.size == null ? {} : { "Content-Length": String(object.size) }),
+    });
   });
 
   app.get("/assets/:name", (context) =>
@@ -401,6 +527,48 @@ function findChat(db, context) {
   const { type, id } = context.req.param();
   if (type !== "channel" && type !== "conversation") return null;
   return db.prepare("SELECT * FROM chats WHERE type=? AND id=?").get(type, id);
+}
+
+function settingsResponse(db, storage) {
+  const counts = blobCounts(db);
+  return {
+    ...describeSettings(storage.settings, lockedFields()),
+    // Where settings.json lives, so the viewer can name the file instead of
+    // guessing when the archive is somewhere other than ./archive-data.
+    directory: storage.directory,
+    counts,
+    job: publicStorageJob(),
+    warning: switchWarning(storage, counts),
+  };
+}
+
+/**
+ * Says so while blobs are stranded on the way out of S3.
+ *
+ * Rows keep their own location, so nothing vanishes the moment a switch flips
+ * -- but an archive running on the disk would then depend on credentials the
+ * operator is in the middle of moving away from. The next time those change,
+ * every blob still named 's3' stops being reachable.
+ */
+function switchWarning(storage, counts) {
+  if (storage.backend !== "file" || !counts.s3.count) return null;
+  return `${counts.s3.count} Objekte liegen noch in S3. Ziehe sie um, solange die Zugangsdaten gelten; danach sind sie nicht mehr erreichbar.`;
+}
+
+function storageManifest(storage) {
+  if (storage.backend !== "s3") return "archive-data/blobs/";
+  const s3 = storage.settings.s3;
+  // Object storage gets a URI rather than a path: there is no directory to point
+  // at, and the per-row object_key column says the same thing for one blob.
+  return `s3://${s3.bucket}/${s3.prefix || ""}`;
+}
+
+// The SDK wraps failures in names like "NoSuchBucket" or "AccessDenied", and a
+// bare "Error" would leave the reader none the wiser.
+function describeError(error) {
+  const name = error?.name;
+  const detail = error?.message || String(error);
+  return name && name !== "Error" ? `${name}: ${detail}` : detail;
 }
 
 async function serveFile(context, directory, name) {
@@ -476,11 +644,15 @@ function toPublicMessage(row) {
 // reachable from the network. It is a parameter rather than a constant only
 // because a container cannot be entered on 127.0.0.1, so the image passes
 // 0.0.0.0 and leaves the port publishing to whoever runs it.
-export function startServer(db, directory, port = 4317, host = "127.0.0.1") {
+//
+// `storage` is the live blob store rather than a directory: it owns the archive
+// path (that is where settings.json lives next to the data it describes) and it
+// is what the settings routes mutate in place.
+export function startServer(db, storage, port = 4317, host = "127.0.0.1") {
   // A wildcard bind is not an address you can visit; print the loopback one.
   const shown = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   return serve(
-    { fetch: createApp(db, directory).fetch, hostname: host, port },
+    { fetch: createApp(db, storage).fetch, hostname: host, port },
     (info) => console.log(`Archiv: http://${shown}:${info.port}`),
   );
 }
