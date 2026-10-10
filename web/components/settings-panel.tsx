@@ -365,6 +365,12 @@ export function SettingsPanel() {
               <p className="import-current">
                 {job.copied + job.alreadyThere + job.failures.length} von {job.total}{" "}
                 Objekten verarbeitet
+                {/* A bucket that is unreachable or refuses writes fails every
+                    blob, and that is the one case where the count is the
+                    message: it says to stop instead of waiting for 1381. */}
+                {job.failures.length
+                  ? ` · ${job.failures.length} fehlgeschlagen`
+                  : ""}
                 {job.current ? ` · ${job.current.slice(0, 8)}…` : ""}
               </p>
             </div>

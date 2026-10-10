@@ -104,11 +104,21 @@ export async function startStorageJob(db, storage, backend) {
     );
     if (totals.failures.length) {
       // Nothing has been switched: rows that did move keep their new location,
-      // rows that failed keep the old one, and both are still readable.
+      // rows that failed keep the old one, and both are still readable. What the
+      // copy already moved stays moved, so repeating this is not a fresh 40 GB
+      // upload -- it is the remainder.
+      const first = totals.failures[0];
+      const reason = `${first.error} (${first.hash.slice(0, 8)}…)`;
+      const many = totals.failures.length > 1;
       throw new Error(
-        `${totals.failures.length} Objekte konnten nicht kopiert werden (${totals.failures[0].error}). Der Speicherort wurde nicht gewechselt.`,
+        `${
+          many
+            ? `${totals.failures.length} von ${totals.total} Objekten konnten nicht kopiert werden, das erste: ${reason}`
+            : `Ein Objekt konnte nicht kopiert werden: ${reason}`
+        } Der Speicherort wurde nicht gewechselt; der Umzug kann einfach wiederholt werden.`,
       );
     }
+
     // Persisted last, so a failed copy leaves both the archive and the
     // configuration exactly as they were. Moving *to* S3 writes the bucket
     // credentials that were just used into settings.json as well: an archive

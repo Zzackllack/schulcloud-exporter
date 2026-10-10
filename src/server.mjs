@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { blobCounts, createS3Store } from "./storage.mjs";
+import { blobCounts, createS3Store, describeStoreError } from "./storage.mjs";
 import {
   publicImportState,
   startImport,
@@ -73,7 +73,9 @@ export function createApp(db, storage) {
     await next();
   });
   app.onError((error, context) => {
-    console.error(error);
+    // A storage failure keeps the useful part behind $response, which
+    // console.error does not print on its own.
+    console.error(error?.$metadata ? describeStoreError(error) : error);
     return context.json({ error: "Interner Archivfehler" }, 500);
   });
   app.notFound((context) => context.json({ error: "Nicht gefunden" }, 404));
@@ -257,7 +259,9 @@ export function createApp(db, storage) {
       await createS3Store(draft).probe();
       return context.json({ ok: true });
     } catch (error) {
-      return context.json({ ok: false, error: describeError(error) }, 502);
+      // The status line and the raw reply are the useful part of a failed probe,
+      // and a bucket behind a proxy spells neither of them out.
+      return context.json({ ok: false, error: describeStoreError(error) }, 502);
     }
   });
 
@@ -561,14 +565,6 @@ function storageManifest(storage) {
   // Object storage gets a URI rather than a path: there is no directory to point
   // at, and the per-row object_key column says the same thing for one blob.
   return `s3://${s3.bucket}/${s3.prefix || ""}`;
-}
-
-// The SDK wraps failures in names like "NoSuchBucket" or "AccessDenied", and a
-// bare "Error" would leave the reader none the wiser.
-function describeError(error) {
-  const name = error?.name;
-  const detail = error?.message || String(error);
-  return name && name !== "Error" ? `${name}: ${detail}` : detail;
 }
 
 async function serveFile(context, directory, name) {

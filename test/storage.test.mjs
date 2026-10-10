@@ -10,6 +10,7 @@ import { openArchive } from "../src/database.mjs";
 import {
   blobCounts,
   createBlobStorage,
+  describeStoreError,
   migrateBlobs,
   saveBlob,
 } from "../src/storage.mjs";
@@ -53,6 +54,18 @@ function startFakeBucket(options = {}) {
         response.end(
           `<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code></Error>`,
         );
+        return;
+      }
+      if (options.failWithHtml) {
+        response.writeHead(502, { "content-type": "text/html" });
+        response.end(
+          "<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>",
+        );
+        return;
+      }
+      if (options.failWithText) {
+        response.writeHead(503, { "content-type": "text/plain" });
+        response.end("upstream is starting, try again later");
         return;
       }
       const chunks = [];
@@ -507,6 +520,101 @@ test("leaves the write target alone when the migration fails", async () => {
     } finally {
       server.close();
     }
+  } finally {
+    await bucket.close();
+  }
+});
+
+test("names the reason a bucket refused a blob", async () => {
+  const bucket = await startBrokenBucket();
+  try {
+    const { db, directory } = await freshArchive();
+    const disk = createBlobStorage({ backend: "file", s3: bucketConfig(bucket) }, directory);
+    await saveBlob(db, disk, Buffer.from("abgelehnt"), "image/png");
+    const storage = createBlobStorage({ backend: "s3", s3: bucketConfig(bucket) }, directory);
+    const totals = await migrateBlobs(db, storage, "s3");
+    assert.equal(totals.failures.length, 1);
+    // A bucket that refuses with S3's own XML at least gets its status across,
+    // which is the difference between "wrong credentials" and trying again.
+    assert.match(totals.failures[0].error, /^HTTP 403/);
+
+    // The refusals that matter are the silent ones behind a proxy: an HTML 502
+    // from a gateway, or plain text from a service that is still booting. Both
+    // reach the reader as "XML parse error: unexpected content", which names
+    // neither, so the reason is rebuilt from the status line and the raw reply.
+    for (const [option, expected] of [
+      ["failWithHtml", /^HTTP 502: UnknownError — der Endpunkt hat nicht mit S3-XML geantwortet \(text\/html\)$/],
+      [
+        "failWithText",
+        /^HTTP 503: upstream is starting, try again later — der Endpunkt hat nicht mit S3-XML geantwortet \(text\/plain\)$/,
+      ],
+    ]) {
+      const noisy = await startFakeBucket({ [option]: true });
+      try {
+        const broken = createBlobStorage({ backend: "s3", s3: bucketConfig(noisy) }, directory);
+        const result = await migrateBlobs(db, broken, "s3");
+        assert.equal(result.failures.length, 1, option);
+        assert.match(result.failures[0].error, expected, option);
+      } finally {
+        await noisy.close();
+      }
+    }
+  } finally {
+    await bucket.close();
+  }
+});
+
+test("says when an endpoint did not answer as S3 at all", async () => {
+  const parseFailure = {
+    name: "DeserializationError",
+    message: "@aws-sdk XML parse error: unexpected content.",
+  };
+  // A proxy page that the client could not read at all: the parse error is all
+  // there is, and it reads like a transport bug rather than a wrong endpoint.
+  assert.equal(
+    describeStoreError(parseFailure),
+    "DeserializationError: @aws-sdk XML parse error: unexpected content. — der Endpunkt hat nicht mit S3-XML geantwortet",
+  );
+  // With a status and headers, the reply says more than the SDK does: whatever
+  // answered was not a bucket, and its content type is the evidence.
+  assert.equal(
+    describeStoreError({
+      ...parseFailure,
+      $metadata: { httpStatusCode: 502, requestId: "xyz" },
+      $response: { headers: new Headers({ "content-type": "text/html; charset=utf-8" }) },
+    }),
+    "HTTP 502: @aws-sdk XML parse error: unexpected content. — der Endpunkt hat nicht mit S3-XML geantwortet (text/html) (Anfrage xyz)",
+  );
+  // A bucket that refuses with S3's own XML error needs no help: the status and
+  // the message already say what to fix.
+  assert.equal(
+    describeStoreError({
+      name: "AccessDenied",
+      message: "Access Denied",
+      $metadata: { httpStatusCode: 403 },
+      $response: { headers: new Headers({ "content-type": "application/xml" }) },
+    }),
+    "HTTP 403: Access Denied",
+  );
+});
+
+test("reports one blob as a single object, not a count", async () => {
+  const bucket = await startBrokenBucket();
+  try {
+    const { db, directory } = await freshArchive();
+    const disk = createBlobStorage({ backend: "file", s3: bucketConfig(bucket) }, directory);
+    await saveBlob(db, disk, Buffer.from("eins"), "image/png");
+    await saveSettings(directory, { backend: "file", s3: bucketConfig(bucket) });
+    const storage = createBlobStorage(await loadSettings(directory), directory);
+
+    await startStorageJob(db, storage, "s3");
+    const job = await settleStorageJob();
+    assert.match(job.error, /^Ein Objekt konnte nicht kopiert werden: /);
+    // The hash prefix is what lets the reader find the offending row.
+    assert.match(job.error, /\([0-9a-f]{8}…\)/);
+    // And the message says what to do about it: the copy is resumable, so a
+    // single bad blob is a repeat, not a dead end.
+    assert.match(job.error, /wiederholt werden/);
   } finally {
     await bucket.close();
   }

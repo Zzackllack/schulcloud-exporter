@@ -158,6 +158,49 @@ function isMissing(error) {
   return error?.name === "NoSuchKey" || error?.name === "NotFound" || error?.$metadata?.httpStatusCode === 404;
 }
 
+function collapse(value) {
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function contentTypeOf(headers) {
+  if (!headers) return "";
+  const value =
+    typeof headers.get === "function" ? headers.get("content-type") : headers["content-type"];
+  return value ? String(value) : "";
+}
+
+/**
+ * Turns an SDK failure into something a reader can act on.
+ *
+ * The SDK's own message names neither the status nor what the endpoint actually
+ * said: a refusal from a proxy arrives as "XML parse error: unexpected content",
+ * because to the client the only fact is that the reply was not S3's XML error
+ * body. S3 answers with XML and nothing else, so a reply that is not XML is the
+ * news -- and that is what this puts in front of the status code.
+ */
+export function describeStoreError(error) {
+  const metadata = error?.$metadata ?? {};
+  const status = metadata.httpStatusCode;
+  const requestId = metadata.requestId;
+  const response = error?.$response ?? error?.response ?? {};
+  // On a deserialisation failure the SDK leaves the reply as a plain string;
+  // anything else has already been turned into a message worth repeating.
+  const raw = typeof response.body === "string" ? collapse(response.body).slice(0, 300) : "";
+  const detail = raw || collapse(error?.message || error);
+  const contentType = contentTypeOf(response.headers).split(";")[0];
+  const looksForeign = contentType && !/xml/i.test(contentType);
+  const parseFailure = /Deserialization|parse error/i.test(detail);
+  // A bucket that answers with a proper XML error is the readable case, and
+  // there is nothing to add to "HTTP 403: AccessDenied".
+  const hint =
+    looksForeign || (parseFailure && !contentType)
+      ? ` — der Endpunkt hat nicht mit S3-XML geantwortet${contentType ? ` (${contentType})` : ""}`
+      : "";
+  return `${status ? `HTTP ${status}` : error?.name || "Fehler"}: ${detail}${hint}${
+    requestId ? ` (Anfrage ${requestId})` : ""
+  }`;
+}
+
 /**
  * The archive's view of blob storage for the lifetime of the process.
  *
@@ -319,7 +362,7 @@ export async function migrateBlobs(db, storage, backend, onProgress = () => {}) 
       );
       totals.copied++;
     } catch (error) {
-      totals.failures.push({ hash: row.hash, error: String(error?.message || error) });
+      totals.failures.push({ hash: row.hash, error: describeStoreError(error) });
     }
   }
   report(rows.at(-1)?.hash ?? null);
