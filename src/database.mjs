@@ -101,7 +101,13 @@ export function openArchive(directory) {
     CREATE TABLE IF NOT EXISTS blobs (
       hash TEXT PRIMARY KEY,
       size_bytes INTEGER NOT NULL,
-      media_type TEXT
+      media_type TEXT,
+      -- Where the bytes actually are. 'file' is the archive's own blobs/
+      -- directory, 's3' an object store; every row names one, so an archive
+      -- can be half-migrated and still readable.
+      storage TEXT NOT NULL DEFAULT 'file',
+      -- The S3 key, stored rather than derived: it survives a change of prefix.
+      object_key TEXT
     );
     CREATE TABLE IF NOT EXISTS import_runs (
       id INTEGER PRIMARY KEY,
@@ -129,6 +135,10 @@ function migrate(db) {
     ["messages", "attachment_missing", "INTEGER NOT NULL DEFAULT 0"],
     ["messages", "reactions", "TEXT"],
     ["messages", "links", "TEXT"],
+    // Pre-storage blobs are on the disk by definition, so the default is the
+    // right one and no backfill is needed.
+    ["blobs", "storage", "TEXT NOT NULL DEFAULT 'file'"],
+    ["blobs", "object_key", "TEXT"],
   ]) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
     if (columns.some((entry) => entry.name === column)) continue;

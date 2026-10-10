@@ -1,6 +1,6 @@
 import { StashcatClient } from "stashcat-api";
 import { importAvatars } from "./avatars.mjs";
-import { saveBlob } from "./blobs.mjs";
+import { saveBlob } from "./storage.mjs";
 import { saveChat, saveMessage } from "./database.mjs";
 
 const PAGE_SIZE = 50;
@@ -11,7 +11,7 @@ const PAGE_SIZE = 50;
 // coupled to wording nobody remembers to keep stable.
 export async function importArchive(
   db,
-  directory,
+  storage,
   credentials,
   output = console,
   onProgress = () => {},
@@ -69,7 +69,7 @@ export async function importArchive(
         if (seen.has(key)) continue;
         seen.add(key);
         const chatId = saveChat(db, "channel", { ...chat, company_id: company.id });
-        await importChat(db, directory, client, "channel", chatId, logging, report, own.id);
+        await importChat(db, storage, client, "channel", chatId, logging, report, own.id);
       }
     }
     for (const archived of [false, true]) {
@@ -79,11 +79,11 @@ export async function importArchive(
         if (seen.has(key)) continue;
         seen.add(key);
         const chatId = saveChat(db, "conversation", chat, archived, String(own.id));
-        await importChat(db, directory, client, "conversation", chatId, logging, report, own.id);
+        await importChat(db, storage, client, "conversation", chatId, logging, report, own.id);
       }
     }
     report({ type: "avatars" });
-    await importAvatars(db, directory, client, logging);
+    await importAvatars(db, storage, client, logging);
     const failed = db
       .prepare(
         `SELECT COUNT(*) AS n FROM chats
@@ -157,7 +157,7 @@ export async function* listConversations(client, archived) {
 
 export async function importChat(
   db,
-  directory,
+  storage,
   client,
   type,
   id,
@@ -199,7 +199,7 @@ export async function importChat(
             );
           }
         }
-        if (await importFile(db, directory, client, file, aesKey, output)) {
+        if (await importFile(db, storage, client, file, aesKey, output)) {
           files++;
         }
       }
@@ -265,7 +265,7 @@ export async function* listMessages(client, type, id) {
   }
 }
 
-async function importFile(db, directory, client, file, aesKey, output) {
+async function importFile(db, storage, client, file, aesKey, output) {
   if (file.id == null) return false;
   const id = String(file.id);
   const current = db.prepare("SELECT status FROM files WHERE id=?").get(id);
@@ -274,7 +274,7 @@ async function importFile(db, directory, client, file, aesKey, output) {
     if (file.encrypted && !aesKey)
       throw new Error("Kein Entschlüsselungsschlüssel");
     const bytes = await client.downloadFile(file, aesKey);
-    const hash = await saveBlob(db, directory, bytes, file.mime);
+    const hash = await saveBlob(db, storage, bytes, file.mime);
     db.prepare(
       `UPDATE files SET blob_hash=?, status='complete', error=NULL
       WHERE id=?`,

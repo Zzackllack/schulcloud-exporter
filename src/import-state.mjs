@@ -153,8 +153,12 @@ export function isImporting() {
  * browser never has to handle a secret at all. Otherwise the caller supplies
  * them for this run only: they live in this closure and are never written to
  * the database, to disk, or into the log.
+ *
+ * `storage` is the live blob store rather than a directory, so an import
+ * started after the storage settings changed writes to the current backend
+ * without the server having to restart anything.
  */
-export async function startImport(db, directory, submitted) {
+export async function startImport(db, storage, submitted) {
   if (running) {
     const error = new Error("Es läuft bereits ein Import.");
     error.status = 409;
@@ -189,7 +193,7 @@ export async function startImport(db, directory, submitted) {
 
   const task = importArchive(
     db,
-    directory,
+    storage,
     credentials,
     {
       log: (message) => note("info", message),

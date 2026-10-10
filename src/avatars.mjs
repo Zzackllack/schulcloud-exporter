@@ -1,4 +1,4 @@
-import { saveBlob } from "./blobs.mjs";
+import { saveBlob } from "./storage.mjs";
 
 function imageUrl(value) {
   if (!value || typeof value !== "string") return null;
@@ -37,7 +37,7 @@ async function fetchImage(value) {
   return { bytes, mediaType };
 }
 
-export async function importAvatars(db, directory, client, output = console) {
+export async function importAvatars(db, storage, client, output = console) {
   const people = db
     .prepare("SELECT id FROM people WHERE avatar_hash IS NULL")
     .all();
@@ -52,7 +52,7 @@ export async function importAvatars(db, directory, client, output = console) {
       );
       const image = await fetchImage(user.image || user.avatar);
       if (!image) continue;
-      const hash = await saveBlob(db, directory, image.bytes, image.mediaType);
+      const hash = await saveBlob(db, storage, image.bytes, image.mediaType);
       db.prepare("UPDATE people SET avatar_hash=? WHERE id=?").run(
         hash,
         person.id,
@@ -93,7 +93,7 @@ export async function importAvatars(db, directory, client, output = console) {
       }
       const image = await fetchImage(raw.image);
       if (!image) continue;
-      const hash = await saveBlob(db, directory, image.bytes, image.mediaType);
+      const hash = await saveBlob(db, storage, image.bytes, image.mediaType);
       db.prepare("UPDATE chats SET avatar_hash=? WHERE type=? AND id=?").run(
         hash,
         chat.type,
