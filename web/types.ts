@@ -129,3 +129,58 @@ export interface ImportState {
   feed: ImportFeedLine[];
   history?: ImportRun[];
 }
+
+export type StorageBackend = "file" | "s3";
+
+export interface S3Settings {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  /**
+   * Always empty: the server sends `secretStored` instead, so a browser never
+   * holds a secret access key and cannot forget to clear it.
+   */
+  secretAccessKey: string;
+  prefix: string;
+  /** Path-style URLs, which MinIO and the smaller providers require. */
+  pathStyle: boolean;
+}
+
+export interface StorageTotals {
+  count: number;
+  bytes: number;
+}
+
+export interface StorageCounts {
+  file: StorageTotals;
+  s3: StorageTotals;
+}
+
+export type StorageJobStatus = "idle" | "running" | "complete" | "failed";
+
+export interface StorageJob {
+  status: StorageJobStatus;
+  backend: StorageBackend | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  total: number;
+  copied: number;
+  alreadyThere: number;
+  failures: { hash: string; error: string }[];
+  current: string | null;
+  error: string | null;
+}
+
+export interface StorageSettings {
+  backend: StorageBackend;
+  s3: S3Settings;
+  secretStored: boolean;
+  /** Field paths pinned by the environment, e.g. `["s3.bucket"]`. */
+  locked: string[];
+  /** The archive directory, where settings.json sits beside the data. */
+  directory: string;
+  counts: StorageCounts;
+  job: StorageJob;
+  warning: string | null;
+}

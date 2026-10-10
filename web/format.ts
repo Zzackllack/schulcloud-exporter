@@ -30,3 +30,14 @@ export function time(value: string | null) {
     ? ""
     : date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
 }
+
+// Decimal units, because that is how every object store and every disk
+// manufacturer reports capacity.
+const SIZE_UNITS = ["B", "KB", "MB", "GB", "TB"];
+
+export function dataSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const exponent = Math.min(Math.floor(Math.log10(bytes) / 3), SIZE_UNITS.length - 1);
+  const value = bytes / 1000 ** exponent;
+  return `${value.toLocaleString("de-DE", { maximumFractionDigits: 1 })} ${SIZE_UNITS[exponent]}`;
+}

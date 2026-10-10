@@ -4,6 +4,7 @@ import { Link, useMatch } from "react-router";
 import { exportUrl, loadArchive, loadImportState, streamImport } from "./api";
 import { Avatar } from "./components/avatar";
 import { ImportPanel } from "./components/import-panel";
+import { SettingsPanel } from "./components/settings-panel";
 import { Sidebar } from "./components/sidebar";
 import { Timeline } from "./components/timeline";
 import type { Chat, ImportState, Summary } from "./types";
@@ -15,9 +16,13 @@ export function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [importState, setImportState] = useState<ImportState | null>(null);
   const match = useMatch("/chats/:type/:id");
+  const settingsMatch = useMatch("/einstellungen");
   const { type, id } = match?.params ?? {};
   const selected = chats.find((chat) => chat.type === type && chat.id === id);
   const showingChat = Boolean(type && id);
+  // Settings take the main column like a chat does, so the same rule applies on
+  // a phone: the sidebar gets out of the way and the header offers a back link.
+  const overlayOpen = showingChat || Boolean(settingsMatch);
 
   // One stream for the app: the sidebar button has to know an import is
   // running even while the dialog is closed, and a second EventSource in the
@@ -50,7 +55,7 @@ export function App() {
   useEffect(() => reload(), [reload]);
 
   return (
-    <div className={`app-shell ${showingChat ? "chat-open" : ""}`}>
+    <div className={`app-shell ${overlayOpen ? "chat-open" : ""}`}>
       <nav className="rail" aria-label="Archiv">
         <Link className="brand-mark" to="/" aria-label="Zur Chatübersicht"><Cloud size={28} strokeWidth={2.1} /></Link>
         <span className="rail-label">Schulcloud<br />Archiv</span>
@@ -73,7 +78,9 @@ export function App() {
         }
       />
       <main className="conversation">
-        {selected ? (
+        {settingsMatch ? (
+          <SettingsPanel />
+        ) : selected ? (
           <>
             <header className="conversation-header">
               <Link className="back-button" to="/" aria-label="Zurück zur Chatliste"><ArrowLeft size={20} /></Link>

@@ -12,6 +12,7 @@ import type { LucideIcon } from "lucide-react";
 import { startImport } from "../api";
 import type { ImportCredentials } from "../api";
 import type { ImportRun, ImportState } from "../types";
+import { Field } from "./field";
 
 interface ImportPanelProps {
   /** Owned by App, which holds the single progress stream. */
@@ -312,37 +313,5 @@ function Stat({
       <strong>{value.toLocaleString("de-DE")}</strong>
       <span>{label}</span>
     </div>
-  );
-}
-
-function Field({
-  id,
-  label,
-  type,
-  autoComplete,
-  value,
-  onChange,
-  inputRef,
-}: {
-  id: string;
-  label: string;
-  type: string;
-  autoComplete: string;
-  value: string;
-  onChange: (value: string) => void;
-  inputRef?: React.Ref<HTMLInputElement>;
-}) {
-  return (
-    <label className="import-field" htmlFor={id}>
-      <span>{label}</span>
-      <input
-        id={id}
-        ref={inputRef}
-        type={type}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
   );
 }

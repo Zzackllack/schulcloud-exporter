@@ -1,4 +1,4 @@
-import { Archive, AlertCircle, CloudDownload, MessageCircle, Search, X } from "lucide-react";
+import { Archive, AlertCircle, CloudDownload, MessageCircle, Search, Settings, X } from "lucide-react";
 import { NavLink } from "react-router";
 import { useDeferredValue, useState } from "react";
 import type { ReactNode } from "react";
@@ -72,17 +72,27 @@ export function Sidebar({ chats, summary, error, importing, onImport, panel }: S
         )
       )}
       <footer className="sidebar-footer">
-        {/* Not disabled while an import runs: this is the control you want to
-            press to watch it. Leaving the panel is fine too, the import keeps
-            going and the footer keeps reporting it. */}
-        <button
-          className={`import-button ${importing ? "running" : ""}`}
-          type="button"
-          onClick={onImport}
-        >
-          <CloudDownload size={16} />
-          {importing ? "Import läuft …" : "Archiv importieren"}
-        </button>
+        <div className="sidebar-actions">
+          {/* Not disabled while an import runs: this is the control you want to
+              press to watch it. Leaving the panel is fine too, the import keeps
+              going and the footer keeps reporting it. */}
+          <button
+            className={`import-button ${importing ? "running" : ""}`}
+            type="button"
+            onClick={onImport}
+          >
+            <CloudDownload size={16} />
+            {importing ? "Import läuft …" : "Archiv importieren"}
+          </button>
+          <NavLink
+            className={({ isActive }) => `settings-link ${isActive ? "selected" : ""}`}
+            to="/einstellungen"
+            aria-label="Einstellungen"
+            title="Einstellungen"
+          >
+            <Settings size={16} />
+          </NavLink>
+        </div>
         <div className="sidebar-stat"><MessageCircle size={15} /><span>{(summary?.messages ?? 0).toLocaleString("de-DE")} Nachrichten</span></div>
         <div className="sidebar-stat"><Archive size={15} /><span>{(summary?.files ?? 0).toLocaleString("de-DE")} Dateien</span></div>
         {summary?.failed ? <div className="sidebar-stat warning"><AlertCircle size={15} /><span>{summary.failed} Chats prüfen</span></div> : null}

@@ -161,6 +161,13 @@ a { color: inherit; }
 .import-button { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-bottom: 13px; padding: 10px; border: 1px solid #cddfe7; border-radius: 11px; background: #f5f9fa; color: #1c6680; font-size: 12px; font-weight: 700; }
 .import-button:hover { background: #e9f4f7; }
 .import-button.running { border-color: #b7d6e1; background: #e2f1f4; color: #145a72; }
+/* The import control and the settings entry share one row, so the button keeps
+   its width but loses the bottom margin it needed when it stood alone. */
+.sidebar-actions { display: flex; align-items: stretch; gap: 8px; width: 100%; margin-bottom: 13px; }
+.sidebar-actions .import-button { margin-bottom: 0; }
+.settings-link { display: grid; flex: none; place-items: center; width: 42px; border: 1px solid #cddfe7; border-radius: 11px; background: #f5f9fa; color: #1c6680; text-decoration: none; }
+.settings-link:hover { background: #e9f4f7; }
+.settings-link.selected { border-color: #b7d6e1; background: #e2f1f4; color: #145a72; }
 .import-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .import-head { display: flex; align-items: flex-start; gap: 8px; padding: 20px 15px 15px; border-bottom: 1px solid #e8edf0; }
 .import-back { display: grid; flex: none; place-items: center; width: 30px; height: 30px; margin: -2px 0 0 -5px; border: 0; border-radius: 9px; background: transparent; color: #29667c; }
@@ -193,6 +200,11 @@ a { color: inherit; }
 /* Same shape as .search-field so the form reads as part of the same product. */
 .import-field input { height: 38px; padding: 0 11px; border: 1px solid #dce5ea; border-radius: 10px; background: #f5f8fa; color: var(--color-ink); font-size: 12px; }
 .import-field input:focus { border-color: #3896b4; outline: 0; background: #fff; box-shadow: 0 0 0 3px #3896b41d; }
+.import-field input:disabled { background: #f0f4f6; color: #93a2ae; cursor: not-allowed; }
+/* "Optional", "Kommt aus der Umgebung", "leer lassen, um …" -- the reason a
+   field looks different from its neighbours belongs under the input, not in a
+   tooltip nobody hovers. */
+.field-hint { color: #8493a1; font-size: 10px; line-height: 1.45; }
 /* margin-top:auto anchors the action to the bottom when there is room;
    padding-top keeps a minimum gap once the form is tall enough to fill. */
 .fatal { display: grid; place-items: center; min-height: 100dvh; padding: 24px; background: var(--color-canvas); }
@@ -216,6 +228,43 @@ a { color: inherit; }
 .import-start:hover { background: #155f78; }
 .import-start:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
 .panel-proof { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; color: #28758a; font-size: 11px; font-weight: 650; }
+
+/* Settings. Same paper as the chat header: the page is a full page, not a
+   dialog, so it gets the app's usual white band on top. */
+.settings-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: #f3f6f8; }
+.settings-head { display: flex; align-items: flex-start; gap: 8px; min-height: 82px; padding: 14px 29px; border-bottom: 1px solid var(--color-line); background: #fff; }
+.settings-head h2 { margin: 0; font-size: 16px; font-weight: 750; letter-spacing: -.02em; }
+.settings-head p { margin: 4px 0 0; color: var(--color-muted); font-size: 11px; line-height: 1.45; }
+.settings-body { width: 100%; max-width: 760px; margin: 0 auto; padding: 21px clamp(16px, 5vw, 40px) 40px; }
+.settings-section { padding: 0 0 21px; margin-bottom: 21px; border-bottom: 1px solid #e8edf0; }
+.settings-section:last-child { margin-bottom: 0; border-bottom: 0; }
+.settings-section h3 { margin: 0 0 5px; font-size: 13px; font-weight: 750; letter-spacing: -.01em; }
+.settings-note { margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.6; }
+.settings-note strong { color: #35566a; font-weight: 700; }
+.storage-choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 13px; }
+.storage-option { display: flex; align-items: flex-start; gap: 11px; padding: 13px 14px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; text-align: left; }
+.storage-option:hover { border-color: #b7d6e1; background: #f7fbfc; }
+.storage-option.active { border-color: #9dc9d8; background: #e2f1f4; box-shadow: inset 0 0 0 1px #9dc9d8; }
+.storage-option:disabled { cursor: not-allowed; opacity: .75; }
+.storage-option-icon { display: grid; flex: none; place-items: center; width: 33px; height: 33px; border-radius: 11px; background: #e1eaf0; color: #42657a; }
+.storage-option.active .storage-option-icon { background: #d3eaf0; color: #16617b; }
+.storage-option strong { display: block; color: var(--color-ink); font-size: 12px; font-weight: 750; }
+.storage-option small { display: block; margin-top: 2px; color: var(--color-muted); font-size: 10px; line-height: 1.45; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 14px; margin: 15px 0 0; }
+.settings-grid .import-field:first-child, .settings-grid .import-field:nth-child(2) { grid-column: span 1; }
+.settings-toggle { display: flex; align-items: flex-start; gap: 9px; align-self: end; padding: 0 0 3px; color: #5d6f80; font-size: 11px; font-weight: 650; }
+.settings-toggle input { width: 15px; height: 15px; margin: 2px 0 0; accent-color: #1a7290; }
+.settings-toggle small { display: block; margin-top: 2px; color: #8493a1; font-size: 10px; font-weight: 400; }
+.settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 15px; }
+.settings-actions .import-button { width: auto; margin: 0; }
+.settings-actions .import-start { width: auto; padding: 10px 15px; }
+.settings-progress { margin-top: 13px; }
+.settings-progress .progress { margin-bottom: 0; }
+.settings-fineprint { margin: 15px 0 0; color: #93a2ae; font-size: 10px; line-height: 1.6; }
+.settings-fineprint code { padding: 1px 5px; border-radius: 5px; background: #eef2f4; color: #5b6f7f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 850px) {
+  .settings-head { padding: 12px 16px; }
+}
 @media (max-width: 850px) {
   .app-shell { grid-template-columns: 62px minmax(240px, 320px) minmax(0, 1fr); }
   .rail { padding-left: 5px; padding-right: 5px; }
