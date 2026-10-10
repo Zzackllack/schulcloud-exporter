@@ -154,13 +154,30 @@ export function SettingsPanel() {
   const { backend, s3, secretStored, locked, counts, job, warning } = settings;
   const lockedField = (path: string) => locked.includes(path);
   const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(settings));
-  const target: StorageBackend = backend === "s3" ? "file" : "s3";
-  const targetLabel = target === "s3" ? "nach S3" : "auf die Festplatte";
+  // The move follows the page the reader is on, not the stored switch: on the S3
+  // page it fills the bucket from the disk, on the disk page it brings everything
+  // home. Pressing it also makes that backend the write target, which is what
+  // choosing the page already said.
+  const target: StorageBackend = draft.backend;
+  const pending = counts[target === "s3" ? "file" : "s3"].count;
   const running = job.status === "running";
   // A bucket can only be used once it is stored, so the button says so rather
   // than failing on the settings it would have used.
   const migrationBlocked = target === "s3" && dirty;
   const done = job.total - job.failures.length;
+  const moveLabel =
+    target === "s3"
+      ? "Alles von der Festplatte nach S3 umziehen"
+      : "Alles aus S3 auf die Festplatte umziehen";
+  const moveNote =
+    target === "s3"
+      ? `${pending.toLocaleString("de-DE")} Objekte liegen noch auf der Festplatte; der Umzug kopiert sie in den Bucket, und Nachrichten und Chats bleiben unterwegs lesbar.`
+      : `${pending.toLocaleString("de-DE")} Objekte liegen noch in S3; der Umzug kopiert sie in das Archivverzeichnis, und Nachrichten und Chats bleiben unterwegs lesbar.`;
+  const migrationHint = migrationBlocked
+    ? "Erst die S3-Verbindung speichern"
+    : pending === 0
+      ? "Nichts umzuziehen"
+      : undefined;
 
   return (
     <section className="settings-panel" aria-label="Einstellungen">
@@ -322,9 +339,11 @@ export function SettingsPanel() {
         <section className="settings-section">
           <h3>Bestand umziehen</h3>
           <p className="settings-note">
-            Neue Dateien landen in <strong>{backend === "s3" ? s3.bucket || "S3" : "archive-data/blobs/"}</strong>.
-            Der Umzug kopiert alles, was noch anderswo liegt; Nachrichten und
-            Chats bleiben unterwegs lesbar.
+            Neue Dateien landen in{" "}
+            <strong>
+              {backend === "s3" ? s3.bucket || "S3" : `${settings.directory}/blobs/`}
+            </strong>
+            . {moveNote}
           </p>
           {error ? (
             <p className="panel-error" role="alert">
@@ -366,8 +385,8 @@ export function SettingsPanel() {
               className="import-button"
               type="button"
               onClick={migrate}
-              disabled={busy !== null || running || migrationBlocked}
-              title={migrationBlocked ? "Erst die S3-Verbindung speichern" : undefined}
+              disabled={busy !== null || running || migrationBlocked || pending === 0}
+              title={migrationHint}
             >
               {busy === "migrate" ? (
                 <>
@@ -375,7 +394,7 @@ export function SettingsPanel() {
                 </>
               ) : (
                 <>
-                  <RefreshCw size={16} />Alle Objekte {targetLabel} umziehen
+                  <RefreshCw size={16} />{moveLabel}
                 </>
               )}
             </button>
