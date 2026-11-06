@@ -14,6 +14,7 @@ import { shortDate } from '../format';
 import type { Chat, Summary } from '../types';
 import { Avatar } from './avatar';
 import { SearchResults } from './search-results';
+import { ChatListItemSkeleton } from './skeleton';
 
 type Filter = 'all' | 'channel' | 'conversation';
 
@@ -154,6 +155,8 @@ function ChatList({
       chat.title.toLocaleLowerCase('de').includes(deferredSearch.toLocaleLowerCase('de'))
   );
 
+  const isLoading = !error && !summary;
+
   return (
     <div className="chat-list">
       {error ? (
@@ -162,8 +165,15 @@ function ChatList({
           Archiv konnte nicht geladen werden. {error}
         </div>
       ) : null}
-      {!error && !summary ? <div className="sidebar-message">Chats werden geladen …</div> : null}
-      {!error && summary && visible.length === 0 ? (
+      {isLoading ? (
+        <>
+          <ChatListItemSkeleton />
+          <ChatListItemSkeleton />
+          <ChatListItemSkeleton />
+          <ChatListItemSkeleton />
+          <ChatListItemSkeleton />
+        </>
+      ) : summary && visible.length === 0 ? (
         <div className="sidebar-message">
           {chats.length
             ? 'Keine passenden Chats gefunden.'

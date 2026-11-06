@@ -238,6 +238,232 @@ a {
   height: 100%;
   object-fit: cover;
 }
+
+/* Skeleton loading states with shimmer animation */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-canvas) 25%,
+    var(--color-line) 50%,
+    var(--color-canvas) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: inherit;
+}
+.skeleton-animated {
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Skeleton size variants */
+.skeleton.w-11.h-11 {
+  width: 43px;
+  height: 43px;
+}
+.skeleton.w-8.h-8 {
+  width: 31px;
+  height: 31px;
+}
+.skeleton.h-4 {
+  height: 16px;
+}
+.skeleton.rounded-full {
+  border-radius: 9999px;
+}
+.skeleton.rounded-lg {
+  border-radius: 0.5rem;
+}
+.skeleton.rounded-md {
+  border-radius: 0.375rem;
+}
+.skeleton.rounded-\[15px\] {
+  border-radius: 15px;
+}
+.skeleton.rounded-\[11px\] {
+  border-radius: 11px;
+}
+
+/* Avatar skeleton */
+.avatar-skeleton {
+  background: #e1eaf0;
+}
+
+/* Message skeleton */
+.message-skeleton {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  min-height: 60px;
+}
+.message-skeleton.own {
+  flex-direction: row-reverse;
+}
+.message-bubble-skeleton {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 1px 2px #0000000d;
+}
+.message-skeleton.own .message-bubble-skeleton {
+  background: #e8f4f7;
+}
+
+/* Chat list item skeleton */
+.chat-row-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 71px;
+  padding: 10px 11px;
+  border-radius: 13px;
+}
+.chat-copy-skeleton {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+}
+.chat-side-skeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex: none;
+}
+
+/* Image skeleton wrapper */
+.skeleton-image-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Timeline initial loading state */
+.timeline-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+.timeline-loading .message-skeleton:first-child {
+  margin-top: 0;
+}
+
+/* Prepend loading state (when loading older messages) */
+.timeline-loading-prepend {
+  padding: 16px 24px 0;
+  border-top: 1px dashed var(--color-line);
+  margin-top: 8px;
+}
+
+.message-skeleton {
+  display: flex;
+  gap: 10px;
+  min-height: 60px;
+}
+.message-skeleton.own {
+  flex-direction: row-reverse;
+}
+.message-bubble-skeleton {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  box-shadow: 0 1px 2px #0000000d;
+}
+.message-skeleton.own .message-bubble-skeleton {
+  background: #e8f4f7;
+}
+
+/* Progress indicator for slow loads */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.loading-indicator .spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-line);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Image loading state */
+.image-attachment.loading {
+  position: relative;
+  min-height: 120px;
+  background: var(--color-canvas);
+}
+.image-attachment.loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    var(--color-canvas) 25%,
+    var(--color-line) 50%,
+    var(--color-canvas) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 12px;
+}
+.image-attachment.loading img {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.image-attachment.loading img.loaded {
+  opacity: 1;
+}
+
+/* Avatar loading state */
+.avatar.loading {
+  background: linear-gradient(
+    90deg,
+    #e1eaf0 25%,
+    #dce4ea 50%,
+    #e1eaf0 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.avatar.loading img {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.avatar.loading img.loaded {
+  opacity: 1;
+}
+
 .chat-copy {
   display: flex;
   flex: 1;

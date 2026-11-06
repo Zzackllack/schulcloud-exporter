@@ -5,6 +5,7 @@ import { loadMessages, loadMessagesAround, MESSAGE_PAGE_SIZE } from '../api';
 import { fullDate } from '../format';
 import type { Message as ArchiveMessage, Chat } from '../types';
 import { Message } from './message';
+import { MessageSkeleton } from './skeleton';
 
 interface TimelineProps {
   chat: Chat;
@@ -145,6 +146,9 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
   }
 
   let previousDay = '';
+  // Show skeleton placeholders while loading older messages
+  const showOlderSkeleton = loading && messages.length > 0 && !restoring.current;
+
   return (
     <div className="timeline" ref={viewport} onScroll={onScroll} aria-live="polite">
       <div className="timeline-inner" ref={content}>
@@ -188,7 +192,17 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
           </div>
         ) : null}
         {loading && !messages.length ? (
-          <div className="timeline-state">Nachrichten werden geladen …</div>
+          <div className="timeline-loading" role="status" aria-label="Nachrichten werden geladen">
+            <MessageSkeleton />
+            <MessageSkeleton />
+            <MessageSkeleton />
+          </div>
+        ) : null}
+        {showOlderSkeleton ? (
+          <div className="timeline-loading timeline-loading-prepend" role="status" aria-label="Ältere Nachrichten werden geladen">
+            <MessageSkeleton />
+            <MessageSkeleton />
+          </div>
         ) : null}
         {!loading && !error && !messages.length ? (
           <div className="timeline-state">In diesem Chat sind keine Nachrichten gespeichert.</div>

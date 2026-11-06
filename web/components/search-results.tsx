@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { searchMessages } from '../api';
 import { shortDate } from '../format';
 import type { SearchHit } from '../types';
+import { ChatListItemSkeleton } from './skeleton';
 
 /** Sentinel pair the API wraps matches in. Never HTML -- see Highlight. */
 const MARK_OPEN = '\u0001';
@@ -65,6 +66,19 @@ export function SearchResults({ query }: { query: string }) {
 
   if (error) {
     return <div className="sidebar-message error">Suche fehlgeschlagen: {error}</div>;
+  }
+
+  if (searching && !hits.length) {
+    return (
+      <div className="chat-list">
+        <div className="search-summary" role="status">Suche läuft …</div>
+        <ChatListItemSkeleton />
+        <ChatListItemSkeleton />
+        <ChatListItemSkeleton />
+        <ChatListItemSkeleton />
+        <ChatListItemSkeleton />
+      </div>
+    );
   }
 
   return (

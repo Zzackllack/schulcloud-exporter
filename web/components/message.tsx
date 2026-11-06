@@ -16,6 +16,7 @@ import type { ArchiveFile, Message as ArchiveMessage } from '../types';
 import { Avatar } from './avatar';
 import { LinkPreviewCard } from './link-preview';
 import { MessageText } from './markdown';
+import { useState } from 'react';
 
 interface MessageProps {
   message: ArchiveMessage;
@@ -141,6 +142,10 @@ function GapNote({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
 }
 
 function Attachment({ file }: { file: ArchiveFile }) {
+  const isImage = file.mime?.startsWith('image/');
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
   if (!file.blob_hash) {
     return (
       <span className="attachment unavailable">
@@ -150,15 +155,25 @@ function Attachment({ file }: { file: ArchiveFile }) {
     );
   }
   const href = `/media/${file.blob_hash}`;
-  if (file.mime?.startsWith('image/')) {
+  if (isImage) {
     return (
       <a
-        className="image-attachment"
+        className={`image-attachment ${!loaded && !error ? 'loading' : ''}`}
         href={href}
         download={file.name}
         aria-label={`${file.name} herunterladen`}
       >
-        <img src={href} alt={file.name} loading="lazy" />
+        <img
+          src={href}
+          alt={file.name}
+          loading="lazy"
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setError(true);
+            setLoaded(true);
+          }}
+          className={loaded ? 'loaded' : ''}
+        />
         <span>
           <Download size={14} />
           {file.name}
