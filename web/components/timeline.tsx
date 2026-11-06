@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
-import { AlertCircle, ArrowUp, CalendarDays } from "lucide-react";
-import { loadMessages, loadMessagesAround, MESSAGE_PAGE_SIZE } from "../api";
-import { fullDate } from "../format";
-import type { Chat, Message as ArchiveMessage } from "../types";
-import { Message } from "./message";
+import { AlertCircle, ArrowUp, CalendarDays } from 'lucide-react';
+import type { FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { loadMessages, loadMessagesAround, MESSAGE_PAGE_SIZE } from '../api';
+import { fullDate } from '../format';
+import type { Message as ArchiveMessage, Chat } from '../types';
+import { Message } from './message';
 
 interface TimelineProps {
   chat: Chat;
@@ -19,7 +19,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [jumpDate, setJumpDate] = useState("");
+  const [jumpDate, setJumpDate] = useState('');
   const [jumping, setJumping] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
   // Set when a jump replaced the window: the top of the timeline is the point
@@ -57,12 +57,13 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     follow.current = true;
     jumped.current = false;
     loadMessages(chat.type, chat.id, null, controller.signal)
-      .then((page) => {
+      .then(page => {
         setMessages(page.messages);
         setHasMore(page.messages.length === MESSAGE_PAGE_SIZE);
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Unbekannter Fehler");
+        if (!controller.signal.aborted)
+          setError(cause instanceof Error ? cause.message : 'Unbekannter Fehler');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -74,8 +75,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     const element = viewport.current;
     // Our own scroll adjustments are not reader intent.
     if (!element || restoring.current) return;
-    follow.current =
-      element.scrollHeight - element.clientHeight - element.scrollTop < BOTTOM_SLACK;
+    follow.current = element.scrollHeight - element.clientHeight - element.scrollTop < BOTTOM_SLACK;
   }
 
   async function loadOlder() {
@@ -100,7 +100,7 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
         if (isCurrent()) restoring.current = false;
         return;
       }
-      setMessages((current) => [...page.messages, ...current]);
+      setMessages(current => [...page.messages, ...current]);
       setHasMore(page.messages.length === MESSAGE_PAGE_SIZE);
       requestAnimationFrame(() => {
         if (!element || controller.signal.aborted) return;
@@ -110,7 +110,8 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
       });
     } catch (cause) {
       if (isCurrent()) restoring.current = false;
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Unbekannter Fehler");
+      if (!controller.signal.aborted)
+        setError(cause instanceof Error ? cause.message : 'Unbekannter Fehler');
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -122,7 +123,12 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
     setJumping(true);
     setError(null);
     try {
-      const page = await loadMessagesAround(chat.type, chat.id, jumpDate, new AbortController().signal);
+      const page = await loadMessagesAround(
+        chat.type,
+        chat.id,
+        jumpDate,
+        new AbortController().signal
+      );
       jumped.current = true;
       follow.current = false;
       setMessages(page.messages);
@@ -132,18 +138,25 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
         if (viewport.current) viewport.current.scrollTop = 0;
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Datum konnte nicht geladen werden.");
+      setError(cause instanceof Error ? cause.message : 'Datum konnte nicht geladen werden.');
     } finally {
       setJumping(false);
     }
   }
 
-  let previousDay = "";
+  let previousDay = '';
   return (
     <div className="timeline" ref={viewport} onScroll={onScroll} aria-live="polite">
       <div className="timeline-inner" ref={content}>
         <div className="timeline-tools">
-          {hasMore ? <button className="older-button" type="button" onClick={loadOlder} disabled={loading}><ArrowUp size={16} />{loading ? "Lädt …" : "Ältere Nachrichten laden"}</button> : <span />}
+          {hasMore ? (
+            <button className="older-button" type="button" onClick={loadOlder} disabled={loading}>
+              <ArrowUp size={16} />
+              {loading ? 'Lädt …' : 'Ältere Nachrichten laden'}
+            </button>
+          ) : (
+            <span />
+          )}
           <form className="jump-form" onSubmit={jumpToDate}>
             <label className="jump-field" htmlFor="jump-date">
               <CalendarDays size={15} aria-hidden="true" />
@@ -152,8 +165,9 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
                 id="jump-date"
                 type="date"
                 value={jumpDate}
+                min={chat.earliest_at?.slice(0, 10)}
                 max={new Date().toISOString().slice(0, 10)}
-                onChange={(event) => setJumpDate(event.target.value)}
+                onChange={event => setJumpDate(event.target.value)}
               />
             </label>
             <button className="jump-button" type="submit" disabled={!jumpDate || jumping}>
@@ -161,14 +175,42 @@ export function Timeline({ chat, ownUserId }: TimelineProps) {
             </button>
           </form>
         </div>
-        {error ? <div className="timeline-error" role="alert"><AlertCircle size={18} />Nachrichten konnten nicht geladen werden ({error}). <button type="button" onClick={messages.length ? loadOlder : () => window.location.reload()}>Erneut versuchen</button></div> : null}
-        {loading && !messages.length ? <div className="timeline-state">Nachrichten werden geladen …</div> : null}
-        {!loading && !error && !messages.length ? <div className="timeline-state">In diesem Chat sind keine Nachrichten gespeichert.</div> : null}
-        {messages.map((message) => {
-          const day = message.created_at?.slice(0, 10) ?? "";
-          const divider = day && day !== previousDay ? <div className="date-divider" key={`day-${day}-${message.id}`}><span>{fullDate(message.created_at!)}</span></div> : null;
+        {error ? (
+          <div className="timeline-error" role="alert">
+            <AlertCircle size={18} />
+            Nachrichten konnten nicht geladen werden ({error}).{' '}
+            <button
+              type="button"
+              onClick={messages.length ? loadOlder : () => window.location.reload()}
+            >
+              Erneut versuchen
+            </button>
+          </div>
+        ) : null}
+        {loading && !messages.length ? (
+          <div className="timeline-state">Nachrichten werden geladen …</div>
+        ) : null}
+        {!loading && !error && !messages.length ? (
+          <div className="timeline-state">In diesem Chat sind keine Nachrichten gespeichert.</div>
+        ) : null}
+        {messages.map(message => {
+          const day = message.created_at?.slice(0, 10) ?? '';
+          const divider =
+            day && day !== previousDay ? (
+              <div className="date-divider" key={`day-${day}-${message.id}`}>
+                <span>{fullDate(message.created_at!)}</span>
+              </div>
+            ) : null;
           previousDay = day;
-          return <div key={message.id}>{divider}<Message message={message} own={message.sender_id !== null && message.sender_id === ownUserId} /></div>;
+          return (
+            <div key={message.id}>
+              {divider}
+              <Message
+                message={message}
+                own={message.sender_id !== null && message.sender_id === ownUserId}
+              />
+            </div>
+          );
         })}
       </div>
     </div>

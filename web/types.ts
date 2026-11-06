@@ -1,4 +1,4 @@
-export type ChatType = "channel" | "conversation";
+export type ChatType = 'channel' | 'conversation';
 
 export interface Chat {
   type: ChatType;
@@ -11,6 +11,7 @@ export interface Chat {
   import_error: string | null;
   message_count: number;
   latest_at: string | null;
+  earliest_at: string | null;
 }
 
 export interface Summary {
@@ -88,16 +89,11 @@ export interface ImportRun {
   id: number;
   started_at: string;
   finished_at: string | null;
-  status: "complete" | "partial" | "failed" | "running";
+  status: 'complete' | 'partial' | 'failed' | 'running';
   error: string | null;
 }
 
-export type ImportStatus =
-  | "idle"
-  | "running"
-  | "complete"
-  | "partial"
-  | "failed";
+export type ImportStatus = 'idle' | 'running' | 'complete' | 'partial' | 'failed';
 
 export interface ImportChatRef {
   type: string;
@@ -106,7 +102,7 @@ export interface ImportChatRef {
 }
 
 export interface ImportFeedLine {
-  level: "info" | "error";
+  level: 'info' | 'error';
   message: string;
   at: string;
 }
@@ -130,7 +126,7 @@ export interface ImportState {
   history?: ImportRun[];
 }
 
-export type StorageBackend = "file" | "s3";
+export type StorageBackend = 'file' | 's3';
 
 export interface S3Settings {
   endpoint: string;
@@ -157,7 +153,7 @@ export interface StorageCounts {
   s3: StorageTotals;
 }
 
-export type StorageJobStatus = "idle" | "running" | "complete" | "failed";
+export type StorageJobStatus = 'idle' | 'running' | 'complete' | 'failed';
 
 export interface StorageJob {
   status: StorageJobStatus;
