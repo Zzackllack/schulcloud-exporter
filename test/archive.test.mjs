@@ -1,11 +1,11 @@
-import assert from "node:assert/strict";
-import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { request as httpRequest } from "node:http";
-import { DatabaseSync } from "node:sqlite";
-import { after, test } from "node:test";
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { after, test } from 'node:test';
 import {
   normalizeLinks,
   normalizeReactions,
@@ -14,32 +14,24 @@ import {
   saveChat,
   saveMessage,
   searchQuery,
-} from "../src/database.mjs";
-import { listMessages } from "../src/importer.mjs";
-import {
-  repairChatTitles,
-  repairMessageState,
-  repairTimestamps,
-} from "../src/repair.mjs";
-import {
-  createBlobStorage,
-  saveBlob,
-  blobCounts,
-} from "../src/storage.mjs";
-import { describeSettings, loadSettings, saveSettings } from "../src/settings.mjs";
+} from '../src/database.mjs';
 import {
   importHistory,
   importStatus,
   resetImportState,
   startImport,
-} from "../src/import-state.mjs";
-import { startServer } from "../src/server.mjs";
+} from '../src/import-state.mjs';
+import { listMessages } from '../src/importer.mjs';
+import { repairChatTitles, repairMessageState, repairTimestamps } from '../src/repair.mjs';
+import { startServer } from '../src/server.mjs';
+import { createBlobStorage } from '../src/storage.mjs';
+import { loadSettings } from '../src/settings.mjs';
 
-const directory = await mkdtemp(join(tmpdir(), "schulcloud-archive-test-"));
+const directory = await mkdtemp(join(tmpdir(), 'schulcloud-archive-test-'));
 const storage = createBlobStorage(await loadSettings(directory), directory);
 after(() => rm(directory, { recursive: true, force: true }));
 
-test("pages through an older history without the PDF date limit", async () => {
+test('pages through an older history without the PDF date limit', async () => {
   const messages = Array.from({ length: 121 }, (_, index) => ({
     id: String(index + 1),
   }));
@@ -50,13 +42,12 @@ test("pages through an older history without the PDF date limit", async () => {
     },
   };
   const ids = [];
-  for await (const message of listMessages(client, "channel", "old-chat"))
-    ids.push(message.id);
+  for await (const message of listMessages(client, 'channel', 'old-chat')) ids.push(message.id);
   assert.equal(ids.length, 121);
-  assert.equal(ids.at(-1), "121");
+  assert.equal(ids.at(-1), '121');
 });
 
-test("flags a repeated API page instead of claiming a complete archive", async () => {
+test('flags a repeated API page instead of claiming a complete archive', async () => {
   const page = Array.from({ length: 50 }, (_, index) => ({
     id: String(index),
   }));
@@ -66,35 +57,35 @@ test("flags a repeated API page instead of claiming a complete archive", async (
     },
   };
   await assert.rejects(async () => {
-    for await (const _message of listMessages(client, "channel", "stuck")) {
+    for await (const _msg of listMessages(client, 'channel', 'stuck')) {
       /* drain */
     }
   }, /wiederholt/);
 });
 
-test("normalizes messages once and serves read-only chat JSON", async () => {
+test('normalizes messages once and serves read-only chat JSON', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "7", name: "Alt", encrypted: false });
+  saveChat(db, 'channel', { id: '7', name: 'Alt', encrypted: false });
   const message = {
-    id: "42",
-    text: "Eine alte Nachricht",
+    id: '42',
+    text: 'Eine alte Nachricht',
     time: 1620000000,
-    sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
-    files: [{ id: "9", name: "plan.pdf", mime: "application/pdf" }],
+    sender: { id: '5', first_name: 'Ada', last_name: 'Lovelace' },
+    files: [{ id: '9', name: 'plan.pdf', mime: 'application/pdf' }],
   };
-  saveMessage(db, "channel", "7", message);
-  saveMessage(db, "channel", "7", message);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM messages").get().n, 1);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM files").get().n, 1);
+  saveMessage(db, 'channel', '7', message);
+  saveMessage(db, 'channel', '7', message);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM messages').get().n, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM files').get().n, 1);
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const response = await fetch(`${base}/api/chats/channel/7/messages`);
     const data = await response.json();
-    assert.equal(data.messages[0].text, "Eine alte Nachricht");
-    assert.equal(data.messages[0].sender_name, "Ada Lovelace");
-    assert.equal(data.messages[0].files[0].name, "plan.pdf");
+    assert.equal(data.messages[0].text, 'Eine alte Nachricht');
+    assert.equal(data.messages[0].sender_name, 'Ada Lovelace');
+    assert.equal(data.messages[0].files[0].name, 'plan.pdf');
     const summary = await fetch(`${base}/api/summary`);
     assert.equal((await summary.json()).messages, 1);
     const exportResponse = await fetch(`${base}/api/chats/channel/7/export`);
@@ -102,13 +93,13 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
     const viewer = await fetch(base);
     assert.equal(viewer.status, 200);
     assert.match(await viewer.text(), /Schulcloud Archiv/);
-    assert.match(viewer.headers.get("content-security-policy"), /default-src 'none'/);
+    assert.match(viewer.headers.get('content-security-policy'), /default-src 'none'/);
     const favicon = await fetch(`${base}/favicon.svg`);
     assert.equal(favicon.status, 200);
-    assert.equal(favicon.headers.get("content-type"), "image/svg+xml");
+    assert.equal(favicon.headers.get('content-type'), 'image/svg+xml');
     assert.match(await favicon.text(), /<svg/);
     assert.equal((await fetch(`${base}/assets/nope.svg`)).status, 404);
-    const write = await fetch(`${base}/api/chats`, { method: "POST" });
+    const write = await fetch(`${base}/api/chats`, { method: 'POST' });
     assert.equal(write.status, 405);
   } finally {
     server.close();
@@ -116,245 +107,255 @@ test("normalizes messages once and serves read-only chat JSON", async () => {
   }
 });
 
-test("prefers absolute created_at timestamps over relative time fields", async () => {
+test('prefers absolute created_at timestamps over relative time fields', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "8", name: "Zeit", encrypted: false });
-  saveMessage(db, "channel", "8", {
-    id: "43",
-    text: "Zeitstempel",
-    created_at: "2024-01-02T03:04:05.000Z",
+  saveChat(db, 'channel', { id: '8', name: 'Zeit', encrypted: false });
+  saveMessage(db, 'channel', '8', {
+    id: '43',
+    text: 'Zeitstempel',
+    created_at: '2024-01-02T03:04:05.000Z',
     time: 88,
     micro_time: 88000000,
   });
-  const row = db.prepare("SELECT created_at FROM messages WHERE id=?").get("43");
-  assert.equal(row.created_at, "2024-01-02T03:04:05.000Z");
+  const row = db.prepare('SELECT created_at FROM messages WHERE id=?').get('43');
+  assert.equal(row.created_at, '2024-01-02T03:04:05.000Z');
   db.close();
 });
 
-test("reads stashcat micro_time as unix seconds, not microseconds", async () => {
+test('reads stashcat micro_time as unix seconds, not microseconds', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "micro", name: "Mikrozeit", encrypted: false });
+  saveChat(db, 'channel', { id: 'micro', name: 'Mikrozeit', encrypted: false });
   // Shape taken verbatim from a real api.stashcat.com response.
-  saveMessage(db, "channel", "micro", {
-    id: "44",
-    text: "Mit Mikrosekunden",
-    time: "1782042438",
-    micro_time: "1782042438.732",
+  saveMessage(db, 'channel', 'micro', {
+    id: '44',
+    text: 'Mit Mikrosekunden',
+    time: '1782042438',
+    micro_time: '1782042438.732',
   });
-  const row = db.prepare("SELECT created_at FROM messages WHERE id=?").get("44");
-  assert.equal(row.created_at, "2026-06-21T11:47:18.732Z");
+  const row = db.prepare('SELECT created_at FROM messages WHERE id=?').get('44');
+  assert.equal(row.created_at, '2026-06-21T11:47:18.732Z');
   db.close();
 });
 
-test("falls back to whole-second time and rejects implausible units", async () => {
+test('falls back to whole-second time and rejects implausible units', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "fallback", name: "Fallback", encrypted: false });
-  saveMessage(db, "channel", "fallback", { id: "45", time: "1782042438" });
+  saveChat(db, 'channel', { id: 'fallback', name: 'Fallback', encrypted: false });
+  saveMessage(db, 'channel', 'fallback', { id: '45', time: '1782042438' });
   assert.equal(
-    db.prepare("SELECT created_at FROM messages WHERE id=?").get("45").created_at,
-    "2026-06-21T11:47:18.000Z",
+    db.prepare('SELECT created_at FROM messages WHERE id=?').get('45').created_at,
+    '2026-06-21T11:47:18.000Z'
   );
   // A value that only makes sense as milliseconds would land in the 16th
   // century once multiplied by 1000, so it must be discarded instead of stored.
-  saveMessage(db, "channel", "fallback", { id: "46", micro_time: "94668480000000" });
-  assert.equal(
-    db.prepare("SELECT created_at FROM messages WHERE id=?").get("46").created_at,
-    null,
-  );
+  saveMessage(db, 'channel', 'fallback', { id: '46', micro_time: '94668480000000' });
+  assert.equal(db.prepare('SELECT created_at FROM messages WHERE id=?').get('46').created_at, null);
   db.close();
 });
 
-test("repairs archived timestamps from the preserved API response", async () => {
+test('repairs archived timestamps from the preserved API response', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "repair", name: "Reparatur", encrypted: false });
+  saveChat(db, 'channel', { id: 'repair', name: 'Reparatur', encrypted: false });
   const original = {
-    id: "47",
-    text: "Alte Zeit",
-    time: "1782042438",
-    micro_time: "1782042438.732",
+    id: '47',
+    text: 'Alte Zeit',
+    time: '1782042438',
+    micro_time: '1782042438.732',
   };
-  saveMessage(db, "channel", "repair", original);
+  saveMessage(db, 'channel', 'repair', original);
   // Simulate the archive written by the buggy unit conversion.
-  db.prepare("UPDATE messages SET created_at=? WHERE id=?").run(
-    "1970-01-01T00:29:42.042Z",
-    "47",
-  );
+  db.prepare('UPDATE messages SET created_at=? WHERE id=?').run('1970-01-01T00:29:42.042Z', '47');
 
   const result = repairTimestamps(db, { log() {} });
   assert.equal(result.changed, 1);
   assert.equal(
-    db.prepare("SELECT created_at FROM messages WHERE id=?").get("47").created_at,
-    "2026-06-21T11:47:18.732Z",
+    db.prepare('SELECT created_at FROM messages WHERE id=?').get('47').created_at,
+    '2026-06-21T11:47:18.732Z'
   );
   // A second run has nothing left to do.
   assert.equal(repairTimestamps(db, { log() {} }).changed, 0);
   db.close();
 });
 
-test("titles conversations from the members list the API actually sends", async () => {
+test('titles conversations from the members list the API actually sends', async () => {
   const db = openArchive(directory);
   // Shape taken from a real api.stashcat.com conversation response: the
   // participants arrive as `members`, and the owner is not among them.
   saveChat(
     db,
-    "conversation",
+    'conversation',
     {
-      id: "members",
+      id: 'members',
       user_count: 4,
       members: [
-        { id: "1", first_name: "Christopher", last_name: "Kern" },
-        { id: "2", first_name: "Katharina", last_name: "Fechner" },
-        { id: "3", first_name: "Florian", last_name: "Baumert" },
+        { id: '1', first_name: 'Christopher', last_name: 'Kern' },
+        { id: '2', first_name: 'Katharina', last_name: 'Fechner' },
+        { id: '3', first_name: 'Florian', last_name: 'Baumert' },
       ],
     },
     false,
-    "9",
+    '9'
   );
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='members'").get().title,
-    "Christopher Kern, Katharina Fechner, Florian Baumert",
+    'Christopher Kern, Katharina Fechner, Florian Baumert'
   );
 
   // A one-to-one chat collapses to the other person's name.
   saveChat(
     db,
-    "conversation",
-    { id: "dm", user_count: 2, members: [{ id: "2", first_name: "Tobias", last_name: "Lukaschewitz" }] },
+    'conversation',
+    {
+      id: 'dm',
+      user_count: 2,
+      members: [{ id: '2', first_name: 'Tobias', last_name: 'Lukaschewitz' }],
+    },
     false,
-    "9",
+    '9'
   );
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='dm'").get().title,
-    "Tobias Lukaschewitz",
+    'Tobias Lukaschewitz'
   );
   db.close();
 });
 
-test("keeps a renamed conversation and tolerates a missing member list", async () => {
+test('keeps a renamed conversation and tolerates a missing member list', async () => {
   const db = openArchive(directory);
-  saveChat(db, "conversation", { id: "renamed", name: "Elternabend", members: [{ id: "2", first_name: "X", last_name: "Y" }] }, false, "9");
+  saveChat(
+    db,
+    'conversation',
+    { id: 'renamed', name: 'Elternabend', members: [{ id: '2', first_name: 'X', last_name: 'Y' }] },
+    false,
+    '9'
+  );
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='renamed'").get().title,
-    "Elternabend",
+    'Elternabend'
   );
   // No members at all: fall back to the id rather than inventing a name.
-  saveChat(db, "conversation", { id: "empty" }, false, "9");
+  saveChat(db, 'conversation', { id: 'empty' }, false, '9');
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='empty'").get().title,
-    "Konversation empty",
+    'Konversation empty'
   );
   // A deleted member keeps the "Nutzer <id>" label used for message senders.
   saveChat(
     db,
-    "conversation",
-    { id: "deleted", members: [{ id: "2", first_name: null, last_name: null, deleted: "1782999466" }] },
+    'conversation',
+    {
+      id: 'deleted',
+      members: [{ id: '2', first_name: null, last_name: null, deleted: '1782999466' }],
+    },
     false,
-    "9",
+    '9'
   );
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='deleted'").get().title,
-    "Nutzer 2",
+    'Nutzer 2'
   );
   db.close();
 });
 
-test("repairs placeholder conversation titles from the stored response", async () => {
+test('repairs placeholder conversation titles from the stored response', async () => {
   const db = openArchive(directory);
   db.prepare("INSERT INTO metadata (key, value) VALUES ('own_user_id', '9')").run();
   saveChat(
     db,
-    "conversation",
-    { id: "stale", members: [{ id: "2", first_name: "Katharina", last_name: "Fechner" }] },
+    'conversation',
+    { id: 'stale', members: [{ id: '2', first_name: 'Katharina', last_name: 'Fechner' }] },
     false,
-    "9",
+    '9'
   );
   db.prepare("UPDATE chats SET title=? WHERE type='conversation' AND id='stale'").run(
-    "Konversation stale",
+    'Konversation stale'
   );
 
   const result = repairChatTitles(db, { log() {} });
   assert.equal(result.changed, 1);
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='stale'").get().title,
-    "Katharina Fechner",
+    'Katharina Fechner'
   );
   // Idempotent, and a user-set name is never overwritten.
   assert.equal(repairChatTitles(db, { log() {} }).changed, 0);
-  db.prepare("UPDATE chats SET title=? WHERE type='conversation' AND id='stale'").run("Elternabend");
+  db.prepare("UPDATE chats SET title=? WHERE type='conversation' AND id='stale'").run(
+    'Elternabend'
+  );
   assert.equal(repairChatTitles(db, { log() {} }).changed, 0);
   assert.equal(
     db.prepare("SELECT title FROM chats WHERE type='conversation' AND id='stale'").get().title,
-    "Elternabend",
+    'Elternabend'
   );
   db.close();
 });
 
-test("records deleted messages, missing attachments and deleted accounts", async () => {
+test('records deleted messages, missing attachments and deleted accounts', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "gaps", name: "Lücken", encrypted: false });
-  saveMessage(db, "channel", "gaps", {
-    id: "gone",
+  saveChat(db, 'channel', { id: 'gaps', name: 'Lücken', encrypted: false });
+  saveMessage(db, 'channel', 'gaps', {
+    id: 'gone',
     text: null,
-    deleted: "1782824371",
-    sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+    deleted: '1782824371',
+    sender: { id: '5', first_name: 'Ada', last_name: 'Lovelace' },
   });
-  saveMessage(db, "channel", "gaps", {
-    id: "no-file",
+  saveMessage(db, 'channel', 'gaps', {
+    id: 'no-file',
     has_file_attached: true,
     files: [],
-    sender: { id: "6", first_name: "Grace", last_name: "Hopper", deleted: "1705186840" },
+    sender: { id: '6', first_name: 'Grace', last_name: 'Hopper', deleted: '1705186840' },
   });
-  saveMessage(db, "channel", "gaps", {
-    id: "intact",
-    text: "Alles gut",
-    files: [{ id: "9", name: "plan.pdf" }],
-    sender: { id: "7", first_name: "Alan", last_name: "Turing" },
+  saveMessage(db, 'channel', 'gaps', {
+    id: 'intact',
+    text: 'Alles gut',
+    files: [{ id: '9', name: 'plan.pdf' }],
+    sender: { id: '7', first_name: 'Alan', last_name: 'Turing' },
   });
 
-  const read = (id) => db.prepare("SELECT deleted, attachment_missing FROM messages WHERE id=?").get(id);
-  assert.equal(read("gone").deleted, "1782824371");
-  assert.equal(read("gone").attachment_missing, 0);
+  const read = id =>
+    db.prepare('SELECT deleted, attachment_missing FROM messages WHERE id=?').get(id);
+  assert.equal(read('gone').deleted, '1782824371');
+  assert.equal(read('gone').attachment_missing, 0);
   // Advertised as attached but the API shipped no metadata: an import gap.
-  assert.equal(read("no-file").attachment_missing, 1);
-  assert.equal(read("no-file").deleted, null);
-  assert.equal(read("intact").attachment_missing, 0);
+  assert.equal(read('no-file').attachment_missing, 1);
+  assert.equal(read('no-file').deleted, null);
+  assert.equal(read('intact').attachment_missing, 0);
 
-  assert.equal(
-    db.prepare("SELECT deleted FROM people WHERE id=?").get("6").deleted,
-    "1705186840",
-  );
-  assert.equal(db.prepare("SELECT deleted FROM people WHERE id=?").get("7").deleted, null);
+  assert.equal(db.prepare('SELECT deleted FROM people WHERE id=?').get('6').deleted, '1705186840');
+  assert.equal(db.prepare('SELECT deleted FROM people WHERE id=?').get('7').deleted, null);
   db.close();
 });
 
-test("backfills deletion flags from the stored response", async () => {
+test('backfills deletion flags from the stored response', async () => {
   // This file shares one temp archive, so assert on the rows created here
   // rather than on the totals repairMessageState reports.
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "old", name: "Alt", encrypted: false });
+  saveChat(db, 'channel', { id: 'old', name: 'Alt', encrypted: false });
   // An archive written before the columns existed: flags are NULL.
-  saveMessage(db, "channel", "old", { id: "a", text: null, deleted: "1705186840" });
-  saveMessage(db, "channel", "old", { id: "b", has_file_attached: true, files: [] });
-  saveMessage(db, "channel", "old", { id: "c", text: "unverändert" });
-  db.prepare("UPDATE messages SET deleted=NULL, attachment_missing=0 WHERE id IN ('a','b','c')").run();
+  saveMessage(db, 'channel', 'old', { id: 'a', text: null, deleted: '1705186840' });
+  saveMessage(db, 'channel', 'old', { id: 'b', has_file_attached: true, files: [] });
+  saveMessage(db, 'channel', 'old', { id: 'c', text: 'unverändert' });
+  db.prepare(
+    "UPDATE messages SET deleted=NULL, attachment_missing=0 WHERE id IN ('a','b','c')"
+  ).run();
 
   const result = repairMessageState(db, { log() {} });
   assert.ok(result.deletedMessages >= 1);
   assert.ok(result.missingAttachments >= 1);
-  const flag = (id) => db.prepare("SELECT deleted, attachment_missing FROM messages WHERE id=?").get(id);
-  assert.equal(flag("a").deleted, "1705186840");
-  assert.equal(flag("a").attachment_missing, 0);
-  assert.equal(flag("b").deleted, null);
-  assert.equal(flag("b").attachment_missing, 1);
+  const flag = id =>
+    db.prepare('SELECT deleted, attachment_missing FROM messages WHERE id=?').get(id);
+  assert.equal(flag('a').deleted, '1705186840');
+  assert.equal(flag('a').attachment_missing, 0);
+  assert.equal(flag('b').deleted, null);
+  assert.equal(flag('b').attachment_missing, 1);
   // A normal message must stay untouched.
-  assert.equal(flag("c").deleted, null);
-  assert.equal(flag("c").attachment_missing, 0);
+  assert.equal(flag('c').deleted, null);
+  assert.equal(flag('c').attachment_missing, 0);
   db.close();
 });
 
-test("adds the deletion columns to a database created by an older version", async () => {
-  const legacy = await mkdtemp(join(tmpdir(), "schulcloud-legacy-"));
-  const path = join(legacy, "archive.sqlite");
+test('adds the deletion columns to a database created by an older version', async () => {
+  const legacy = await mkdtemp(join(tmpdir(), 'schulcloud-legacy-'));
+  const path = join(legacy, 'archive.sqlite');
   const old = new DatabaseSync(path);
   // The schema as it looked before the deleted-state columns were added.
   old.exec(`CREATE TABLE people (id TEXT PRIMARY KEY, display_name TEXT NOT NULL,
@@ -365,37 +366,47 @@ test("adds the deletion columns to a database created by an older version", asyn
   old.close();
 
   const db = openArchive(legacy);
-  const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
-  assert.ok(columns("people").includes("deleted"), "people.deleted added");
-  assert.ok(columns("messages").includes("deleted"), "messages.deleted added");
-  assert.ok(columns("messages").includes("attachment_missing"), "messages.attachment_missing added");
+  const columns = table =>
+    db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .map(c => c.name);
+  assert.ok(columns('people').includes('deleted'), 'people.deleted added');
+  assert.ok(columns('messages').includes('deleted'), 'messages.deleted added');
+  assert.ok(
+    columns('messages').includes('attachment_missing'),
+    'messages.attachment_missing added'
+  );
   // Re-opening must not fail or duplicate the columns.
   db.close();
   const again = openArchive(legacy);
   assert.equal(
-    again.prepare("PRAGMA table_info(messages)").all().filter((c) => c.name === "deleted").length,
-    1,
+    again
+      .prepare('PRAGMA table_info(messages)')
+      .all()
+      .filter(c => c.name === 'deleted').length,
+    1
   );
   again.close();
   await rm(legacy, { recursive: true, force: true });
 });
 
-test("serves deletion state and names deleted accounts honestly", async () => {
+test('serves deletion state and names deleted accounts honestly', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "api-gaps", name: "API", encrypted: false });
-  saveMessage(db, "channel", "api-gaps", {
-    id: "d1",
+  saveChat(db, 'channel', { id: 'api-gaps', name: 'API', encrypted: false });
+  saveMessage(db, 'channel', 'api-gaps', {
+    id: 'd1',
     text: null,
-    deleted: "1705186840",
-    sender: { id: "11", first_name: "Ada", last_name: "Lovelace" },
+    deleted: '1705186840',
+    sender: { id: '11', first_name: 'Ada', last_name: 'Lovelace' },
   });
-  saveMessage(db, "channel", "api-gaps", {
-    id: "d2",
-    text: "Hallo",
-    sender: { id: "12", deleted: "1705186840" },
+  saveMessage(db, 'channel', 'api-gaps', {
+    id: 'd2',
+    text: 'Hallo',
+    sender: { id: '12', deleted: '1705186840' },
   });
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const page = await (await fetch(`${base}/api/chats/channel/api-gaps/messages`)).json();
@@ -403,50 +414,50 @@ test("serves deletion state and names deleted accounts honestly", async () => {
     assert.equal(first.deleted, true);
     assert.equal(first.attachment_missing, false);
     // The sender of the first message still has a name.
-    assert.equal(first.sender_name, "Ada Lovelace");
+    assert.equal(first.sender_name, 'Ada Lovelace');
     assert.equal(first.sender_deleted, false);
     // The second sender's account was deleted, so no name is recoverable.
     assert.equal(second.sender_deleted, true);
-    assert.equal(second.sender_name, "Gelöschtes Konto");
+    assert.equal(second.sender_name, 'Gelöschtes Konto');
   } finally {
     server.close();
     db.close();
   }
 });
 
-test("keeps the archive read-only and only allows a guarded import trigger", async () => {
+test('keeps the archive read-only and only allows a guarded import trigger', async () => {
   const db = openArchive(directory);
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = (path, init = {}) =>
     fetch(`${base}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
       ...init,
     });
   try {
     // Everything that is not the import trigger stays read-only.
-    for (const path of ["/api/chats", "/api/summary", "/api/chats/7/messages"]) {
+    for (const path of ['/api/chats', '/api/summary', '/api/chats/7/messages']) {
       assert.equal((await post(path)).status, 405, `${path} must reject writes`);
     }
-    assert.equal((await post("/api/import/../chats")).status, 405);
+    assert.equal((await post('/api/import/../chats')).status, 405);
 
     // The import routes answer, but a write without JSON is refused: a
     // cross-origin form cannot set that content type, and a cross-origin
     // fetch would need a preflight this server never answers.
-    assert.equal((await post("/api/import", { headers: {} })).status, 415);
+    assert.equal((await post('/api/import', { headers: {} })).status, 415);
     assert.equal(
       (
-        await post("/api/import", {
-          headers: { "content-type": "text/plain" },
+        await post('/api/import', {
+          headers: { 'content-type': 'text/plain' },
         })
       ).status,
-      415,
+      415
     );
     // No credentials anywhere -> a clear 400 rather than a stack trace.
-    const missing = await post("/api/import");
+    const missing = await post('/api/import');
     assert.equal(missing.status, 400);
     assert.match((await missing.json()).error, /SCHULCLOUD_EMAIL|Zugangsdaten/);
 
@@ -455,46 +466,46 @@ test("keeps the archive read-only and only allows a guarded import trigger", asy
     assert.equal(state.status, 200);
     const body = await state.json();
     assert.equal(body.running, false);
-    assert.equal(body.status, "idle");
+    assert.equal(body.status, 'idle');
   } finally {
     server.close();
     db.close();
   }
 });
 
-test("rejects import triggers that did not come from this machine", async () => {
+test('rejects import triggers that did not come from this machine', async () => {
   const db = openArchive(directory);
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const port = server.address().port;
   // fetch silently drops `host` -- it is a forbidden header name -- so this has
   // to be a raw request for the check to mean anything.
-  const raw = (host) =>
+  const raw = host =>
     new Promise((resolve, reject) => {
       const request = httpRequest(
         {
-          host: "127.0.0.1",
+          host: '127.0.0.1',
           port,
-          path: "/api/import",
-          method: "POST",
-          headers: { host, "content-type": "application/json" },
+          path: '/api/import',
+          method: 'POST',
+          headers: { host, 'content-type': 'application/json' },
         },
-        (response) => {
+        response => {
           response.resume();
-          response.on("end", () => resolve(response.statusCode));
-        },
+          response.on('end', () => resolve(response.statusCode));
+        }
       );
-      request.on("error", reject);
-      request.end("{}");
+      request.on('error', reject);
+      request.end('{}');
     });
   try {
     // A remote page can point a name it controls at 127.0.0.1, so the Host
     // header -- not the socket -- is what proves the caller meant this viewer.
-    assert.equal(await raw("attacker.example.com"), 403);
-    assert.equal(await raw("127.0.0.1.attacker.example"), 403);
+    assert.equal(await raw('attacker.example.com'), 403);
+    assert.equal(await raw('127.0.0.1.attacker.example'), 403);
     // Local names are allowed through to the handler, which then rejects the
     // request for having no credentials.
-    assert.equal(await raw("localhost"), 400);
+    assert.equal(await raw('localhost'), 400);
     assert.equal(await raw(`127.0.0.1:${port}`), 400);
   } finally {
     server.close();
@@ -502,24 +513,27 @@ test("rejects import triggers that did not come from this machine", async () => 
   }
 });
 
-test("runs at most one import at a time", async () => {
+test('runs at most one import at a time', async () => {
   resetImportState();
   const db = openArchive(directory);
   // No credentials and no env: the attempt must fail before any network work.
-  await assert.rejects(() => startImport(db, storage, null), (error) => {
-    assert.equal(error.status, 400);
-    return true;
-  });
+  await assert.rejects(
+    () => startImport(db, storage, null),
+    error => {
+      assert.equal(error.status, 400);
+      return true;
+    }
+  );
   // Fake credentials get past validation, so the second call has to collide.
-  process.env.SCHULCLOUD_EMAIL = "a@example.org";
-  process.env.SCHULCLOUD_PASSWORD = "x";
-  process.env.SCHULCLOUD_SECURITY_PASSWORD = "y";
-  const first = startImport(db, storage, null).catch(() => {});
+  process.env.SCHULCLOUD_EMAIL = 'a@example.org';
+  process.env.SCHULCLOUD_PASSWORD = 'x';
+  process.env.SCHULCLOUD_SECURITY_PASSWORD = 'y';
+  startImport(db, storage, null).catch(() => {});
   try {
-    assert.equal(importStatus().status, "running");
+    assert.equal(importStatus().status, 'running');
     const second = await startImport(db, storage, null).then(
       () => null,
-      (error) => error,
+      error => error
     );
     assert.equal(second?.status, 409);
   } finally {
@@ -531,77 +545,74 @@ test("runs at most one import at a time", async () => {
   }
 });
 
-test("normalises reactions and drops unusable entries", async () => {
+test('normalises reactions and drops unusable entries', async () => {
   assert.deepEqual(normalizeReactions(undefined), null);
   assert.deepEqual(normalizeReactions([]), null);
   // The wire shape is {emoji, num_reactions}, not a count field.
-  assert.deepEqual(
-    normalizeReactions([{ emoji: "👍", num_reactions: 7 }]),
-    [{ emoji: "👍", count: 7 }],
-  );
+  assert.deepEqual(normalizeReactions([{ emoji: '👍', num_reactions: 7 }]), [
+    { emoji: '👍', count: 7 },
+  ]);
   // Busiest first.
   assert.deepEqual(
     normalizeReactions([
-      { emoji: "🎉", num_reactions: 2 },
-      { emoji: "👍", num_reactions: 30 },
+      { emoji: '🎉', num_reactions: 2 },
+      { emoji: '👍', num_reactions: 30 },
     ]),
     [
-      { emoji: "👍", count: 30 },
-      { emoji: "🎉", count: 2 },
-    ],
+      { emoji: '👍', count: 30 },
+      { emoji: '🎉', count: 2 },
+    ]
   );
   // Duplicate emoji merge rather than showing two pills for one glyph.
   assert.deepEqual(
     normalizeReactions([
-      { emoji: "👍", num_reactions: 3 },
-      { emoji: "👍", num_reactions: 4 },
+      { emoji: '👍', num_reactions: 3 },
+      { emoji: '👍', num_reactions: 4 },
     ]),
-    [{ emoji: "👍", count: 7 }],
+    [{ emoji: '👍', count: 7 }]
   );
   // Junk must not reach the UI, where it would render an uncounted pill.
   assert.deepEqual(
     normalizeReactions([
-      { emoji: "", num_reactions: 5 },
-      { emoji: "👍", num_reactions: 0 },
-      { emoji: "👍", num_reactions: "many" },
+      { emoji: '', num_reactions: 5 },
+      { emoji: '👍', num_reactions: 0 },
+      { emoji: '👍', num_reactions: 'many' },
       { num_reactions: 5 },
       null,
-      { emoji: "✅", num_reactions: 1.7 },
+      { emoji: '✅', num_reactions: 1.7 },
     ]),
-    [{ emoji: "✅", count: 1 }],
+    [{ emoji: '✅', count: 1 }]
   );
 });
 
-test("stores reactions on import and backfills them from the response", async () => {
+test('stores reactions on import and backfills them from the response', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "react", name: "Reaktionen", encrypted: false });
-  saveMessage(db, "channel", "react", {
-    id: "r1",
-    text: "Da",
-    reactions: [{ emoji: "👍", num_reactions: 12 }],
+  saveChat(db, 'channel', { id: 'react', name: 'Reaktionen', encrypted: false });
+  saveMessage(db, 'channel', 'react', {
+    id: 'r1',
+    text: 'Da',
+    reactions: [{ emoji: '👍', num_reactions: 12 }],
   });
-  saveMessage(db, "channel", "react", { id: "r2", text: "Ohne" });
-  const read = (id) => db.prepare("SELECT reactions FROM messages WHERE id=?").get(id).reactions;
-  assert.equal(read("r1"), JSON.stringify([{ emoji: "👍", count: 12 }]));
-  assert.equal(read("r2"), null);
+  saveMessage(db, 'channel', 'react', { id: 'r2', text: 'Ohne' });
+  const read = id => db.prepare('SELECT reactions FROM messages WHERE id=?').get(id).reactions;
+  assert.equal(read('r1'), JSON.stringify([{ emoji: '👍', count: 12 }]));
+  assert.equal(read('r2'), null);
 
   // A pre-reactions archive has NULL, and the repair recovers it from raw_json.
   db.prepare("UPDATE messages SET reactions=NULL WHERE id='r1'").run();
   const result = repairMessageState(db, { log() {} });
   assert.equal(result.withReactions, 1);
   assert.equal(result.reactionCount, 12);
-  assert.equal(read("r1"), JSON.stringify([{ emoji: "👍", count: 12 }]));
+  assert.equal(read('r1'), JSON.stringify([{ emoji: '👍', count: 12 }]));
 
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const page = await (
-      await fetch(`${base}/api/chats/channel/react/messages`)
-    ).json();
-    const withReaction = page.messages.find((m) => m.id === "r1");
-    const without = page.messages.find((m) => m.id === "r2");
-    assert.deepEqual(withReaction.reactions, [{ emoji: "👍", count: 12 }]);
+    const page = await (await fetch(`${base}/api/chats/channel/react/messages`)).json();
+    const withReaction = page.messages.find(m => m.id === 'r1');
+    const without = page.messages.find(m => m.id === 'r2');
+    assert.deepEqual(withReaction.reactions, [{ emoji: '👍', count: 12 }]);
     // Never null: the UI maps over it unconditionally.
     assert.deepEqual(without.reactions, []);
   } finally {
@@ -610,87 +621,90 @@ test("stores reactions on import and backfills them from the response", async ()
   }
 });
 
-test("turns user input into a safe FTS5 match expression", () => {
+test('turns user input into a safe FTS5 match expression', () => {
   // Every token is quoted and ANDed, so FTS5 syntax in the input is inert
   // rather than a parse error.
-  assert.equal(searchQuery("Fahrrad"), '"Fahrrad"*');
-  assert.equal(searchQuery("Fahrrad Aktionstag"), '"Fahrrad" AND "Aktionstag"*');
+  assert.equal(searchQuery('Fahrrad'), '"Fahrrad"*');
+  assert.equal(searchQuery('Fahrrad Aktionstag'), '"Fahrrad" AND "Aktionstag"*');
   // The prefix goes on the last searchable word, so a trailing "-" is dropped
   // and "NEAR" keeps its prefix match.
   assert.equal(searchQuery('" OR NEAR -'), '"OR" AND "NEAR"*');
-  assert.equal(searchQuery("a* b"), '"a" AND "b"*');
+  assert.equal(searchQuery('a* b'), '"a" AND "b"*');
   // Punctuation separates words instead of gluing them together.
-  assert.equal(searchQuery("Fahrrad,ORT"), '"Fahrrad" AND "ORT"*');
-  assert.equal(searchQuery("Hallo.Welt"), '"Hallo" AND "Welt"*');
+  assert.equal(searchQuery('Fahrrad,ORT'), '"Fahrrad" AND "ORT"*');
+  assert.equal(searchQuery('Hallo.Welt'), '"Hallo" AND "Welt"*');
   // Nothing searchable left after stripping.
-  assert.equal(searchQuery(""), null);
-  assert.equal(searchQuery("   "), null);
-  assert.equal(searchQuery("-"), null);
+  assert.equal(searchQuery(''), null);
+  assert.equal(searchQuery('   '), null);
+  assert.equal(searchQuery('-'), null);
   assert.equal(searchQuery('"*()'), null);
   assert.equal(searchQuery(undefined), null);
 });
 
-test("indexes message bodies and finds them again", async () => {
+test('indexes message bodies and finds them again', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "fts", name: "Suche", encrypted: false });
-  saveMessage(db, "channel", "fts", { id: "s1", text: "Fahrrad Aktionstag am Foyer" });
-  saveMessage(db, "channel", "fts", { id: "s2", text: "Unicef Spendenlauf" });
-  saveMessage(db, "channel", "fts", { id: "s3", text: null });
-  saveMessage(db, "channel", "fts", { id: "s4", text: "Rückgabe der Lehrwerke" });
+  saveChat(db, 'channel', { id: 'fts', name: 'Suche', encrypted: false });
+  saveMessage(db, 'channel', 'fts', { id: 's1', text: 'Fahrrad Aktionstag am Foyer' });
+  saveMessage(db, 'channel', 'fts', { id: 's2', text: 'Unicef Spendenlauf' });
+  saveMessage(db, 'channel', 'fts', { id: 's3', text: null });
+  saveMessage(db, 'channel', 'fts', { id: 's4', text: 'Rückgabe der Lehrwerke' });
 
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const hit = await (await fetch(`${base}/api/search?q=Fahrrad`)).json();
     assert.equal(hit.results.length, 1);
-    assert.equal(hit.results[0].id, "s1");
-    assert.equal(hit.results[0].chat_title, "Suche");
+    assert.equal(hit.results[0].id, 's1');
+    assert.equal(hit.results[0].chat_title, 'Suche');
     // Matches come back wrapped in control sentinels, never HTML.
     assert.match(hit.results[0].snippet, /\u0001Fahrrad\u0002/);
     assert.doesNotMatch(hit.results[0].snippet, /<[a-z]/i);
 
     // Both terms must be present.
     assert.equal(
-      (await (await fetch(`${base}/api/search?q=${encodeURIComponent("Fahrrad Aktionstag")}`)).json()).results.length,
-      1,
+      (
+        await (
+          await fetch(`${base}/api/search?q=${encodeURIComponent('Fahrrad Aktionstag')}`)
+        ).json()
+      ).results.length,
+      1
     );
     assert.equal(
-      (await (await fetch(`${base}/api/search?q=${encodeURIComponent("Fahrrad Unicef")}`)).json()).results.length,
-      0,
+      (await (await fetch(`${base}/api/search?q=${encodeURIComponent('Fahrrad Unicef')}`)).json())
+        .results.length,
+      0
     );
     // unicode61 folds accents, so "Ruckgabe" finds "Rückgabe" and a prefix of
-    // the folded form matches too. It does not expand to the German ue/oe/ss
-    // spelling, so "rueckgabe" finds nothing.
+    // the folded form matches too. We also expand German ASCII forms (ue/oe/ae/ss)
+    // to their umlaut equivalents so "rueckgabe" finds "Rückgabe" as well.
     for (const [q, expected] of [
-      ["R%C3%BCckgabe", 1],
-      ["Ruckgabe", 1],
-      ["Ruckg", 1],
-      ["rueckgabe", 0],
+      ['R%C3%BCckgabe', 1],
+      ['Ruckgabe', 1],
+      ['Ruckg', 1],
+      ['rueckgabe', 1],
     ]) {
       assert.equal(
         (await (await fetch(`${base}/api/search?q=${q}`)).json()).results.length,
         expected,
-        `q=${q}`,
+        `q=${q}`
       );
     }
     // Hostile and empty input must not 500.
-    for (const q of ['"><img src=x>', "NEAR(", "*", ""]) {
+    for (const q of ['"><img src=x>', 'NEAR(', '*', '']) {
       const response = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`);
       assert.equal(response.status, 200, `q=${q}`);
     }
 
     // Re-saving a message must update the index, not duplicate or orphan it.
-    saveMessage(db, "channel", "fts", { id: "s1", text: "Fahrrad, jetzt in der Turnhalle" });
-    assert.equal(
-      (await (await fetch(`${base}/api/search?q=Turnhalle`)).json()).results.length,
-      1,
-    );
+    saveMessage(db, 'channel', 'fts', { id: 's1', text: 'Fahrrad, jetzt in der Turnhalle' });
+    assert.equal((await (await fetch(`${base}/api/search?q=Turnhalle`)).json()).results.length, 1);
     // The previous text is gone from the index, not merely superseded.
     assert.equal(
-      (await (await fetch(`${base}/api/search?q=Aktionstag`)).json())
-        .results.filter((r) => r.id === "s1").length,
-      0,
+      (await (await fetch(`${base}/api/search?q=Aktionstag`)).json()).results.filter(
+        r => r.id === 's1'
+      ).length,
+      0
     );
   } finally {
     server.close();
@@ -698,14 +712,20 @@ test("indexes message bodies and finds them again", async () => {
   }
 });
 
-test("rebuilds the search index for archives created before it existed", async () => {
-  const legacy = await mkdtemp(join(tmpdir(), "schulcloud-fts-"));
+test('rebuilds the search index for archives created before it existed', async () => {
+  const legacy = await mkdtemp(join(tmpdir(), 'schulcloud-fts-'));
   const db = openArchive(legacy);
-  db.prepare("INSERT INTO chats (type, id, title, raw_json) VALUES ('channel','old','Alt','{}')").run();
+  db.prepare(
+    "INSERT INTO chats (type, id, title, raw_json) VALUES ('channel','old','Alt','{}')"
+  ).run();
   // Written with the index triggers disabled, as if the table predates them.
-  db.exec("DROP TRIGGER messages_fts_insert");
-  db.prepare("INSERT INTO messages (id, chat_type, chat_id, text, decryption_state, raw_json) VALUES ('o1','channel','old','Fahrrad Aktionstag','plain','{}')").run();
-  db.exec("CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, coalesce(new.text, '')); END");
+  db.exec('DROP TRIGGER messages_fts_insert');
+  db.prepare(
+    "INSERT INTO messages (id, chat_type, chat_id, text, decryption_state, raw_json) VALUES ('o1','channel','old','Fahrrad Aktionstag','plain','{}')"
+  ).run();
+  db.exec(
+    "CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, coalesce(new.text, '')); END"
+  );
   // An external-content FTS table reads count(*) from the content table, so
   // ask the index itself whether the row is findable.
   const indexed = () =>
@@ -715,11 +735,9 @@ test("rebuilds the search index for archives created before it existed", async (
   assert.equal(rebuildSearchIndex(db), 1);
   assert.equal(indexed(), 1);
   const server = startServer(db, createBlobStorage(await loadSettings(legacy), legacy), 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   try {
-    const response = await fetch(
-      `http://127.0.0.1:${server.address().port}/api/search?q=Fahrrad`,
-    );
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/search?q=Fahrrad`);
     assert.equal((await response.json()).results.length, 1);
   } finally {
     server.close();
@@ -728,82 +746,79 @@ test("rebuilds the search index for archives created before it existed", async (
   }
 });
 
-test("normalises link previews and refuses unsafe urls", () => {
+test('normalises link previews and refuses unsafe urls', () => {
   assert.equal(normalizeLinks(undefined), null);
   assert.equal(normalizeLinks([]), null);
   // Titles come back from the unfurler with stray tabs and newlines.
-  assert.deepEqual(
-    normalizeLinks([{ url: "https://a.test/x", title: "\n\tNextcloud\t" }]),
-    [{ url: "https://a.test/x", title: "Nextcloud" }],
-  );
+  assert.deepEqual(normalizeLinks([{ url: 'https://a.test/x', title: '\n\tNextcloud\t' }]), [
+    { url: 'https://a.test/x', title: 'Nextcloud' },
+  ]);
   // No usable title falls back to the host, without the www prefix.
-  assert.deepEqual(
-    normalizeLinks([{ url: "https://www.a.test/x", title: "   " }]),
-    [{ url: "https://www.a.test/x", title: "a.test" }],
-  );
+  assert.deepEqual(normalizeLinks([{ url: 'https://www.a.test/x', title: '   ' }]), [
+    { url: 'https://www.a.test/x', title: 'a.test' },
+  ]);
   // These become clickable links, so a script URL must never survive.
   for (const url of [
-    "javascript:alert(1)",
-    "data:text/html,<script>alert(1)</script>",
-    "file:///etc/passwd",
-    "not a url",
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+    'not a url',
   ]) {
-    assert.equal(normalizeLinks([{ url, title: "x" }]), null, url);
+    assert.equal(normalizeLinks([{ url, title: 'x' }]), null, url);
   }
   // requested_url is the fallback when url is absent.
-  assert.deepEqual(
-    normalizeLinks([{ requested_url: "https://b.test/y", title: "B" }]),
-    [{ url: "https://b.test/y", title: "B" }],
-  );
+  assert.deepEqual(normalizeLinks([{ requested_url: 'https://b.test/y', title: 'B' }]), [
+    { url: 'https://b.test/y', title: 'B' },
+  ]);
   // Same url twice is one card.
   assert.deepEqual(
     normalizeLinks([
-      { url: "https://c.test/z", title: "C" },
-      { url: "https://c.test/z", title: "C again" },
+      { url: 'https://c.test/z', title: 'C' },
+      { url: 'https://c.test/z', title: 'C again' },
     ]),
-    [{ url: "https://c.test/z", title: "C" }],
+    [{ url: 'https://c.test/z', title: 'C' }]
   );
   // The preview image is dropped, never carried into the viewer.
   const [only] = normalizeLinks([
-    { url: "https://d.test/i", title: "D", image: "https://tracker.test/p.png" },
+    { url: 'https://d.test/i', title: 'D', image: 'https://tracker.test/p.png' },
   ]);
-  assert.equal("image" in only, false);
+  assert.equal('image' in only, false);
 });
 
-test("stores link previews and backfills them from the response", async () => {
+test('stores link previews and backfills them from the response', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "links", name: "Links", encrypted: false });
-  saveMessage(db, "channel", "links", {
-    id: "l1",
-    text: "Siehe dazu",
+  saveChat(db, 'channel', { id: 'links', name: 'Links', encrypted: false });
+  saveMessage(db, 'channel', 'links', {
+    id: 'l1',
+    text: 'Siehe dazu',
     links: [
-      { url: "https://example.org/angebot", title: "Angebot", description: "Kurzfassung" },
-      { url: "javascript:alert(1)", title: "böse" },
+      { url: 'https://example.org/angebot', title: 'Angebot', description: 'Kurzfassung' },
+      { url: 'javascript:alert(1)', title: 'böse' },
     ],
   });
-  saveMessage(db, "channel", "links", { id: "l2", text: "Ohne Link" });
-  const read = (id) => db.prepare("SELECT links FROM messages WHERE id=?").get(id).links;
-  assert.deepEqual(JSON.parse(read("l1")), [
-    { url: "https://example.org/angebot", title: "Angebot", description: "Kurzfassung" },
+  saveMessage(db, 'channel', 'links', { id: 'l2', text: 'Ohne Link' });
+  const read = id => db.prepare('SELECT links FROM messages WHERE id=?').get(id).links;
+  assert.deepEqual(JSON.parse(read('l1')), [
+    { url: 'https://example.org/angebot', title: 'Angebot', description: 'Kurzfassung' },
   ]);
-  assert.equal(read("l2"), null);
+  assert.equal(read('l2'), null);
 
   db.prepare("UPDATE messages SET links=NULL WHERE id='l1'").run();
   const result = repairMessageState(db, { log() {} });
   assert.equal(result.withLinks, 1);
   assert.equal(result.linkCount, 1);
-  assert.equal(JSON.parse(read("l1")).length, 1);
+  assert.equal(JSON.parse(read('l1')).length, 1);
 
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   try {
     const page = await (
       await fetch(`http://127.0.0.1:${server.address().port}/api/chats/channel/links/messages`)
     ).json();
-    const withLink = page.messages.find((m) => m.id === "l1");
-    const without = page.messages.find((m) => m.id === "l2");
+    const withLink = page.messages.find(m => m.id === 'l1');
+    const without = page.messages.find(m => m.id === 'l2');
     assert.equal(withLink.links.length, 1);
-    assert.equal(withLink.links[0].url, "https://example.org/angebot");
+    assert.equal(withLink.links[0].url, 'https://example.org/angebot');
     // Never null: the component maps over it unconditionally.
     assert.deepEqual(without.links, []);
   } finally {
@@ -812,54 +827,54 @@ test("stores link previews and backfills them from the response", async () => {
   }
 });
 
-test("opens a window of messages around a requested date", async () => {
+test('opens a window of messages around a requested date', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "jump", name: "Sprung", encrypted: false });
+  saveChat(db, 'channel', { id: 'jump', name: 'Sprung', encrypted: false });
   // Three messages a month apart, so a window is guaranteed to exist.
-  const days = ["2021-01-10", "2021-02-10", "2021-03-10", "2021-04-10", "2021-05-10"];
+  const days = ['2021-01-10', '2021-02-10', '2021-03-10', '2021-04-10', '2021-05-10'];
   for (const [index, day] of days.entries()) {
-    saveMessage(db, "channel", "jump", {
+    saveMessage(db, 'channel', 'jump', {
       // ids are the primary key of messages, so they must be unique across
       // this whole file, not just within this chat.
       id: `jump-${index}`,
       text: `Tag ${day}`,
       time: String(Date.parse(`${day}T10:00:00Z`) / 1000),
-      sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+      sender: { id: '5', first_name: 'Ada', last_name: 'Lovelace' },
     });
   }
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  const around = (date) =>
-    fetch(`${base}/api/chats/channel/jump/around?date=${date}`).then((r) =>
-      r.json().then((body) => ({ status: r.status, body })),
+  const around = date =>
+    fetch(`${base}/api/chats/channel/jump/around?date=${date}`).then(r =>
+      r.json().then(body => ({ status: r.status, body }))
     );
   try {
     // The requested day has to be inside the window, not merely near it.
-    const { body } = await around("2021-02-15");
-    const texts = body.messages.map((m) => m.text);
-    assert.ok(texts.includes("Tag 2021-02-10"), JSON.stringify(texts));
-    assert.ok(texts.includes("Tag 2021-01-10"), "context before the target");
+    const { body } = await around('2021-02-15');
+    const texts = body.messages.map(m => m.text);
+    assert.ok(texts.includes('Tag 2021-02-10'), JSON.stringify(texts));
+    assert.ok(texts.includes('Tag 2021-01-10'), 'context before the target');
     // Still ascending, as the timeline expects.
     assert.deepEqual(
-      body.messages.map((m) => m.created_at),
-      [...body.messages.map((m) => m.created_at)].sort(),
+      body.messages.map(m => m.created_at),
+      [...body.messages.map(m => m.created_at)].sort()
     );
-    assert.equal(body.chat.title, "Sprung");
+    assert.equal(body.chat.title, 'Sprung');
 
     // A day before the chat existed falls back to the first message rather
     // than returning nothing.
-    const early = await around("2019-01-01");
-    assert.equal(early.body.messages[0].text, "Tag 2021-01-10");
+    const early = await around('2019-01-01');
+    assert.equal(early.body.messages[0].text, 'Tag 2021-01-10');
     // And a day after it ends with the last message.
-    const late = await around("2030-01-01");
-    assert.equal(late.body.messages.at(-1).text, "Tag 2021-05-10");
+    const late = await around('2030-01-01');
+    assert.equal(late.body.messages.at(-1).text, 'Tag 2021-05-10');
 
-    assert.equal((await around("nonsense")).status, 400);
-    assert.equal((await around("")).status, 400);
+    assert.equal((await around('nonsense')).status, 400);
+    assert.equal((await around('')).status, 400);
     assert.equal(
       (await fetch(`${base}/api/chats/channel/missing/around?date=2021-01-01`)).status,
-      404,
+      404
     );
   } finally {
     server.close();
@@ -867,102 +882,96 @@ test("opens a window of messages around a requested date", async () => {
   }
 });
 
-test("streams the whole archive as newline-delimited JSON", async () => {
+test('streams the whole archive as newline-delimited JSON', async () => {
   const db = openArchive(directory);
-  saveChat(db, "channel", { id: "ex", name: "Export", encrypted: false });
-  saveMessage(db, "channel", "ex", {
-    id: "x1",
-    text: "Zeile eins\nund zwei",
-    sender: { id: "5", first_name: "Ada", last_name: "Lovelace" },
+  saveChat(db, 'channel', { id: 'ex', name: 'Export', encrypted: false });
+  saveMessage(db, 'channel', 'ex', {
+    id: 'x1',
+    text: 'Zeile eins\nund zwei',
+    sender: { id: '5', first_name: 'Ada', last_name: 'Lovelace' },
   });
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const response = await fetch(`${base}/api/export`);
     assert.equal(response.status, 200);
-    assert.match(response.headers.get("content-type"), /application\/x-ndjson/);
-    assert.match(response.headers.get("content-disposition"), /schulcloud-archiv\.ndjson/);
-    const lines = (await response.text()).split("\n").filter(Boolean);
+    assert.match(response.headers.get('content-type'), /application\/x-ndjson/);
+    assert.match(response.headers.get('content-disposition'), /schulcloud-archiv\.ndjson/);
+    const lines = (await response.text()).split('\n').filter(Boolean);
     // Every line must stand alone: a newline inside a message body has to be
     // escaped, not emitted raw, or the file stops being parseable.
     for (const line of lines) {
       assert.doesNotThrow(() => JSON.parse(line), line.slice(0, 80));
     }
-    const records = lines.map((line) => JSON.parse(line));
+    const records = lines.map(line => JSON.parse(line));
     const manifest = records[0];
-    assert.equal(manifest.record, "manifest");
-    assert.equal(manifest.format, "schulcloud-archive-v1");
-    assert.ok(manifest.tables.includes("messages"));
-    const message = records.find((r) => r.record === "messages" && r.row.id === "x1");
-    assert.equal(message.row.text, "Zeile eins\nund zwei");
-    assert.ok(records.some((r) => r.record === "chats" && r.row.id === "ex"));
+    assert.equal(manifest.record, 'manifest');
+    assert.equal(manifest.format, 'schulcloud-archive-v1');
+    assert.ok(manifest.tables.includes('messages'));
+    const message = records.find(r => r.record === 'messages' && r.row.id === 'x1');
+    assert.equal(message.row.text, 'Zeile eins\nund zwei');
+    assert.ok(records.some(r => r.record === 'chats' && r.row.id === 'ex'));
   } finally {
     server.close();
     db.close();
   }
 });
 
-test("reports previous import runs", async () => {
+test('reports previous import runs', async () => {
   const db = openArchive(directory);
   // Inserted in the order they would really happen, since the history is
   // ordered by id -- the most recent attempt first.
   db.prepare(
     `INSERT INTO import_runs (started_at, finished_at, status, error)
-     VALUES ('2026-01-01T03:04:05.000Z', NULL, 'failed', 'Anmeldung abgelehnt')`,
+     VALUES ('2026-01-01T03:04:05.000Z', NULL, 'failed', 'Anmeldung abgelehnt')`
   ).run();
   db.prepare(
     `INSERT INTO import_runs (started_at, finished_at, status, error)
-     VALUES ('2026-01-02T03:04:05.000Z', '2026-01-02T03:09:05.000Z', 'partial', '2 Chats und 1 Datei prüfen')`,
+     VALUES ('2026-01-02T03:04:05.000Z', '2026-01-02T03:09:05.000Z', 'partial', '2 Chats und 1 Datei prüfen')`
   ).run();
   // This file shares one archive and an earlier test starts a real run, so
   // assert on these two rows rather than on the total.
   const history = importHistory(db);
-  const mine = history.filter((run) => run.started_at.startsWith("2026-01-0"));
+  const mine = history.filter(run => run.started_at.startsWith('2026-01-0'));
   assert.equal(mine.length, 2);
   // Newest first, so the most recent attempt is the one the reader cares about.
-  assert.equal(mine[0].status, "partial");
-  assert.equal(mine[1].status, "failed");
-  assert.equal(mine[1].error, "Anmeldung abgelehnt");
-  assert.equal(history[0].id >= history[1].id, true, "newest first");
+  assert.equal(mine[0].status, 'partial');
+  assert.equal(mine[1].status, 'failed');
+  assert.equal(mine[1].error, 'Anmeldung abgelehnt');
+  assert.equal(history[0].id >= history[1].id, true, 'newest first');
 
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   try {
-    const body = await (
-      await fetch(`http://127.0.0.1:${server.address().port}/api/import`)
-    ).json();
+    const body = await (await fetch(`http://127.0.0.1:${server.address().port}/api/import`)).json();
     assert.ok(body.history.length >= 2);
-    assert.ok(
-      body.history.some((run) => run.error === "2 Chats und 1 Datei prüfen"),
-    );
+    assert.ok(body.history.some(run => run.error === '2 Chats und 1 Datei prüfen'));
   } finally {
     server.close();
     db.close();
   }
 });
 
-test("loads older messages even when timestamps are missing", async () => {
+test('loads older messages even when timestamps are missing', async () => {
   const db = openArchive(directory);
-  saveChat(db, "conversation", { id: "missing-date", name: "Alt" });
-  for (const id of ["1", "2", "3"]) {
-    saveMessage(db, "conversation", "missing-date", {
+  saveChat(db, 'conversation', { id: 'missing-date', name: 'Alt' });
+  for (const id of ['1', '2', '3']) {
+    saveMessage(db, 'conversation', 'missing-date', {
       id: `missing-${id}`,
       text: id,
     });
   }
   const server = startServer(db, storage, 0);
-  await once(server, "listening");
+  await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const first = await fetch(
-      `${base}/api/chats/conversation/missing-date/messages?limit=2`,
-    );
+    const first = await fetch(`${base}/api/chats/conversation/missing-date/messages?limit=2`);
     const firstPage = (await first.json()).messages;
     assert.equal(firstPage.length, 2);
     const cursor = firstPage[0];
     const older = await fetch(
-      `${base}/api/chats/conversation/missing-date/messages?limit=2&before=&before_id=${cursor.id}`,
+      `${base}/api/chats/conversation/missing-date/messages?limit=2&before=&before_id=${cursor.id}`
     );
     const olderPage = (await older.json()).messages;
     assert.equal(olderPage.length, 1);

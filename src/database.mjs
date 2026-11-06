@@ -1,10 +1,10 @@
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 export function openArchive(directory) {
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const db = new DatabaseSync(join(directory, "archive.sqlite"), {
+  const db = new DatabaseSync(join(directory, 'archive.sqlite'), {
     timeout: 5000,
   });
   db.exec(`
@@ -130,18 +130,18 @@ export function openArchive(directory) {
 function migrate(db) {
   const added = [];
   for (const [table, column, definition] of [
-    ["people", "deleted", "TEXT"],
-    ["messages", "deleted", "TEXT"],
-    ["messages", "attachment_missing", "INTEGER NOT NULL DEFAULT 0"],
-    ["messages", "reactions", "TEXT"],
-    ["messages", "links", "TEXT"],
+    ['people', 'deleted', 'TEXT'],
+    ['messages', 'deleted', 'TEXT'],
+    ['messages', 'attachment_missing', 'INTEGER NOT NULL DEFAULT 0'],
+    ['messages', 'reactions', 'TEXT'],
+    ['messages', 'links', 'TEXT'],
     // Pre-storage blobs are on the disk by definition, so the default is the
     // right one and no backfill is needed.
-    ["blobs", "storage", "TEXT NOT NULL DEFAULT 'file'"],
-    ["blobs", "object_key", "TEXT"],
+    ['blobs', 'storage', "TEXT NOT NULL DEFAULT 'file'"],
+    ['blobs', 'object_key', 'TEXT'],
   ]) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
-    if (columns.some((entry) => entry.name === column)) continue;
+    if (columns.some(entry => entry.name === column)) continue;
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     added.push(`${table}.${column}`);
   }
@@ -151,7 +151,7 @@ function migrate(db) {
 export function saveChat(db, type, chat, archived = false, ownId = null) {
   const id = String(chat.id);
   const title =
-    type === "channel"
+    type === 'channel'
       ? chat.name || `Channel ${id}`
       : chat.name || conversationTitle(chat, ownId) || `Konversation ${id}`;
   db.prepare(
@@ -161,7 +161,7 @@ export function saveChat(db, type, chat, archived = false, ownId = null) {
     ON CONFLICT(type, id) DO UPDATE SET
       title=excluded.title, company_id=excluded.company_id,
       archived=excluded.archived, encrypted=excluded.encrypted,
-      raw_json=excluded.raw_json`,
+      raw_json=excluded.raw_json`
   ).run(
     type,
     id,
@@ -169,7 +169,7 @@ export function saveChat(db, type, chat, archived = false, ownId = null) {
     chat.company_id ? String(chat.company_id) : null,
     archived ? 1 : 0,
     chat.encrypted ? 1 : 0,
-    JSON.stringify(chat),
+    JSON.stringify(chat)
   );
   return id;
 }
@@ -182,26 +182,26 @@ export function conversationTitle(chat, ownId) {
     : Array.isArray(chat.participants)
       ? chat.participants
       : null;
-  if (!people) return "";
+  if (!people) return '';
   // `members` already omits the account owner, but `participants` may not.
-  const others = people.filter((entry) => {
+  const others = people.filter(entry => {
     const user = entry.user || entry;
     return String(user.id || entry.user_id) !== String(ownId);
   });
   return (others.length ? others : people)
-    .map((entry) => {
+    .map(entry => {
       const user = entry.user || entry;
       // Deleted accounts come back with first_name/last_name scrubbed, so fall
       // back to the same "Nutzer <id>" label saveMessage uses for senders and
       // keep the title identical to what the message bubbles show.
       return (
-        [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+        [user.first_name, user.last_name].filter(Boolean).join(' ') ||
         user.name ||
-        (user.id ? `Nutzer ${user.id}` : "")
+        (user.id ? `Nutzer ${user.id}` : '')
       );
     })
     .filter(Boolean)
-    .join(", ");
+    .join(', ');
 }
 
 // A school archive spans 2019 to today; anything outside this window means we
@@ -211,7 +211,7 @@ const MAX_PLAUSIBLE_MS = Date.UTC(2100, 0, 1);
 
 export function messageDate(message) {
   const createdAt = message.created_at || message.created;
-  if (typeof createdAt === "string" && createdAt.trim()) {
+  if (typeof createdAt === 'string' && createdAt.trim()) {
     const parsed = new Date(createdAt);
     if (!Number.isNaN(parsed.valueOf())) return parsed.toISOString();
   }
@@ -241,7 +241,7 @@ export function normalizeReactions(value) {
   if (!Array.isArray(value)) return null;
   const merged = new Map();
   for (const entry of value) {
-    const emoji = typeof entry?.emoji === "string" ? entry.emoji.trim() : "";
+    const emoji = typeof entry?.emoji === 'string' ? entry.emoji.trim() : '';
     const count = Number(entry?.num_reactions);
     if (!emoji || !Number.isFinite(count) || count <= 0) continue;
     merged.set(emoji, (merged.get(emoji) ?? 0) + Math.trunc(count));
@@ -261,7 +261,7 @@ export function normalizeReactions(value) {
  */
 export function rebuildSearchIndex(db) {
   db.exec("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')");
-  return db.prepare("SELECT count(*) AS n FROM messages_fts").get().n;
+  return db.prepare('SELECT count(*) AS n FROM messages_fts').get().n;
 }
 
 /**
@@ -281,22 +281,20 @@ export function normalizeLinks(value) {
   const seen = new Set();
   const links = [];
   for (const entry of value) {
-    const raw = typeof entry?.url === "string" && entry.url
-      ? entry.url
-      : entry?.requested_url;
-    if (typeof raw !== "string") continue;
+    const raw = typeof entry?.url === 'string' && entry.url ? entry.url : entry?.requested_url;
+    if (typeof raw !== 'string') continue;
     let parsed;
     try {
       parsed = new URL(raw.trim());
     } catch {
       continue;
     }
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") continue;
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') continue;
     const url = parsed.toString();
     if (seen.has(url)) continue;
     seen.add(url);
     // Titles arrive with stray tabs and newlines from the unfurler.
-    const title = collapse(entry?.title) || parsed.hostname.replace(/^www\./, "");
+    const title = collapse(entry?.title) || parsed.hostname.replace(/^www\./, '');
     const description = collapse(entry?.description).slice(0, 220);
     links.push(description ? { url, title, description } : { url, title });
     if (links.length >= 6) break;
@@ -305,7 +303,7 @@ export function normalizeLinks(value) {
 }
 
 function collapse(value) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
 /**
@@ -315,57 +313,88 @@ function collapse(value) {
  * `OR` throw. Every token is stripped of syntax characters and quoted, then the
  * tokens are ANDed: all words must appear, which is what people expect from a
  * search box. A trailing `*` on the last token is preserved as a prefix match.
+ *
+ * Markdown syntax characters (*, _, ~, `, etc.) are stripped so that searching
+ * for "**wichtig**" finds "wichtig". German umlauts and ß are expanded to
+ * their ASCII equivalents (ü→ue, ö→oe, ä→ae, ß→ss) so that "rueckgabe" finds
+ * "Rückgabe" even though the FTS5 unicode61 tokenizer only folds accents.
  */
 export function searchQuery(input) {
-  const raw = String(input || "").trim();
+  const raw = String(input || '').trim();
   if (!raw) return null;
+
+  // Strip markdown syntax characters that users might type when searching.
+  // These would otherwise be treated as literal characters or FTS5 syntax.
+  const withoutMarkdown = raw
+    .replace(/[*_~`>#[\]]()/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!withoutMarkdown) return null;
+
   // Punctuation separates words rather than disappearing: "Fahrrad,ORT" must
   // become two terms, not the single nonsense token "FahrradORT".
-  const cleaned = raw
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
+  const cleaned = withoutMarkdown.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   if (!cleaned.length) return null;
+
+  // Expand German ASCII forms (ue, oe, ae, ss) to also match their umlaut
+  // equivalents. The FTS5 unicode61 tokenizer with remove_diacritics folds
+  // accents (ü→u, ö→o, ä→a, ß→ss) but does NOT expand ASCII forms to
+  // umlauts. So "rueckgabe" would NOT match "Rückgabe" in the index
+  // (which folds to "ruckgabe").
+  //
+  // We only expand terms that are pure ASCII - terms already containing
+  // umlauts are left alone so the tokenizer folds them correctly.
+  const hasUmlaut = /[üöäßÜÖÄ]/u;
+  const expandGerman = term => {
+    if (hasUmlaut.test(term)) return term; // already has umlauts, let tokenizer fold
+    return term
+      .replace(/ue/gi, 'ü')
+      .replace(/oe/gi, 'ö')
+      .replace(/ae/gi, 'ä')
+      .replace(/ss/gi, 'ß');
+  };
+
   const last = cleaned.length - 1;
   return cleaned
-    .map((term, index) => (index === last ? `"${term}"*` : `"${term}"`))
-    .join(" AND ");
+    .map((term, index) => {
+      const expanded = expandGerman(term);
+      return index === last ? `"${expanded}"*` : `"${expanded}"`;
+    })
+    .join(' AND ');
 }
 
 export function saveMessage(db, type, chatId, message) {
-  const sender =
-    typeof message.sender === "object" && message.sender
-      ? message.sender
-      : null;
+  const sender = typeof message.sender === 'object' && message.sender ? message.sender : null;
   const senderId = sender?.id == null ? null : String(sender.id);
   if (senderId) {
     const displayName =
       sender.name ||
-      [sender.first_name, sender.last_name].filter(Boolean).join(" ") ||
+      [sender.first_name, sender.last_name].filter(Boolean).join(' ') ||
       `Nutzer ${senderId}`;
     db.prepare(
       `INSERT INTO people (id, display_name, deleted, raw_json)
       VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       display_name=excluded.display_name, deleted=excluded.deleted,
-      raw_json=excluded.raw_json`,
+      raw_json=excluded.raw_json`
     ).run(
       senderId,
       displayName,
       sender.deleted == null ? null : String(sender.deleted),
-      JSON.stringify(sender),
+      JSON.stringify(sender)
     );
   }
   // The upstream client silently keeps ciphertext when decryption fails.
   const decryptionState = message.encrypted
     ? !message.text
-      ? "empty"
+      ? 'empty'
       : message.original_text != null
-        ? "decrypted"
-        : "unverified"
-    : "plain";
+        ? 'decrypted'
+        : 'unverified'
+    : 'plain';
   // `has_file_attached` is set even when the API ships no file metadata, which
   // is how an unavailable attachment shows up as a message with no content.
-  const attachmentMissing =
-    message.has_file_attached && !(message.files || []).length ? 1 : 0;
+  const attachmentMissing = message.has_file_attached && !(message.files || []).length ? 1 : 0;
   const reactions = normalizeReactions(message.reactions);
   const links = normalizeLinks(message.links);
   db.prepare(
@@ -383,7 +412,7 @@ export function saveMessage(db, type, chatId, message) {
       attachment_missing=excluded.attachment_missing,
       reactions=excluded.reactions,
       links=excluded.links,
-      raw_json=excluded.raw_json`,
+      raw_json=excluded.raw_json`
   ).run(
     String(message.id),
     type,
@@ -391,14 +420,14 @@ export function saveMessage(db, type, chatId, message) {
     senderId,
     message.text ?? null,
     messageDate(message),
-    message.kind || message.type || "message",
+    message.kind || message.type || 'message',
     message.reply_to_id ? String(message.reply_to_id) : null,
     decryptionState,
     message.deleted == null ? null : String(message.deleted),
     attachmentMissing,
     reactions ? JSON.stringify(reactions) : null,
     links ? JSON.stringify(links) : null,
-    JSON.stringify(message),
+    JSON.stringify(message)
   );
   for (const file of message.files || []) {
     if (file.id == null) continue;
@@ -409,17 +438,17 @@ export function saveMessage(db, type, chatId, message) {
       `INSERT INTO files (id, name, mime, size_bytes, raw_json)
       VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET
       name=excluded.name, mime=excluded.mime,
-      size_bytes=excluded.size_bytes, raw_json=excluded.raw_json`,
+      size_bytes=excluded.size_bytes, raw_json=excluded.raw_json`
     ).run(
       fileId,
       file.name || fileId,
       file.mime || null,
       Number.isFinite(sizeBytes) ? sizeBytes : null,
-      JSON.stringify(file),
+      JSON.stringify(file)
     );
     db.prepare(
       `INSERT OR IGNORE INTO message_files (message_id, file_id)
-      VALUES (?, ?)`,
+      VALUES (?, ?)`
     ).run(String(message.id), fileId);
   }
   return decryptionState;
