@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -8,20 +8,20 @@ import {
   Loader,
   PlugZap,
   RefreshCw,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Link } from "react-router";
+} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
+import type { StorageDraft } from '../api';
 import {
   loadStorageSettings,
   saveStorageSettings,
   startStorageMigration,
   streamStorage,
   testStorageSettings,
-} from "../api";
-import type { StorageDraft } from "../api";
-import type { StorageBackend, StorageSettings } from "../types";
-import { dataSize } from "../format";
-import { Field } from "./field";
+} from '../api';
+import { dataSize } from '../format';
+import type { StorageBackend, StorageSettings } from '../types';
+import { Field } from './field';
 
 /**
  * Storage settings: where the blobs live and how to move them.
@@ -34,7 +34,7 @@ import { Field } from "./field";
 export function SettingsPanel() {
   const [settings, setSettings] = useState<StorageSettings | null>(null);
   const [draft, setDraft] = useState<StorageDraft>(emptyDraft());
-  const [busy, setBusy] = useState<"save" | "test" | "migrate" | null>(null);
+  const [busy, setBusy] = useState<'save' | 'test' | 'migrate' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const status = useRef<string | null>(null);
@@ -42,7 +42,7 @@ export function SettingsPanel() {
   useEffect(() => {
     const controller = new AbortController();
     loadStorageSettings(controller.signal)
-      .then((loaded) => {
+      .then(loaded => {
         setSettings(loaded);
         setDraft(draftOf(loaded));
         status.current = loaded.job.status;
@@ -55,7 +55,7 @@ export function SettingsPanel() {
         setError(
           cause instanceof Error
             ? `Einstellungen konnten nicht geladen werden: ${cause.message}`
-            : "Einstellungen konnten nicht geladen werden.",
+            : 'Einstellungen konnten nicht geladen werden.'
         );
       });
     return () => controller.abort();
@@ -65,7 +65,7 @@ export function SettingsPanel() {
   // and the switch have to be re-read once the job is no longer running.
   const reload = useCallback(() => {
     loadStorageSettings()
-      .then((loaded) => {
+      .then(loaded => {
         setSettings(loaded);
         setDraft(draftOf(loaded));
       })
@@ -73,62 +73,62 @@ export function SettingsPanel() {
   }, []);
 
   useEffect(() => {
-    return streamStorage((job) => {
-      setSettings((current) => (current ? { ...current, job } : current));
-      if (job.status !== "running" && status.current === "running") reload();
+    return streamStorage(job => {
+      setSettings(current => (current ? { ...current, job } : current));
+      if (job.status !== 'running' && status.current === 'running') reload();
       status.current = job.status;
     });
   }, [reload]);
 
-  function update(field: keyof StorageDraft["s3"], value: string | boolean) {
-    setDraft((current) => ({ ...current, s3: { ...current.s3, [field]: value } }));
+  function update(field: keyof StorageDraft['s3'], value: string | boolean) {
+    setDraft(current => ({ ...current, s3: { ...current.s3, [field]: value } }));
     setNotice(null);
   }
 
   function choose(backend: StorageBackend) {
-    setDraft((current) => ({ ...current, backend }));
+    setDraft(current => ({ ...current, backend }));
     setNotice(null);
   }
 
   async function save() {
-    setBusy("save");
+    setBusy('save');
     setError(null);
     setNotice(null);
     try {
       const saved = await saveStorageSettings(draft);
       setSettings(saved);
       setDraft(draftOf(saved));
-      setNotice("Speicherort gespeichert.");
+      setNotice('Speicherort gespeichert.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Speichern fehlgeschlagen.");
+      setError(cause instanceof Error ? cause.message : 'Speichern fehlgeschlagen.');
     } finally {
       setBusy(null);
     }
   }
 
   async function test() {
-    setBusy("test");
+    setBusy('test');
     setError(null);
     setNotice(null);
     try {
       const result = await testStorageSettings(draft);
-      if (result.ok) setNotice("Verbindung steht; der Bucket antwortet.");
-      else setError(result.error || "Verbindung fehlgeschlagen.");
+      if (result.ok) setNotice('Verbindung steht; der Bucket antwortet.');
+      else setError(result.error || 'Verbindung fehlgeschlagen.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Verbindung fehlgeschlagen.");
+      setError(cause instanceof Error ? cause.message : 'Verbindung fehlgeschlagen.');
     } finally {
       setBusy(null);
     }
   }
 
   async function migrate() {
-    setBusy("migrate");
+    setBusy('migrate');
     setError(null);
     setNotice(null);
     try {
       await startStorageMigration(target);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Umzug fehlgeschlagen.");
+      setError(cause instanceof Error ? cause.message : 'Umzug fehlgeschlagen.');
     } finally {
       setBusy(null);
     }
@@ -159,24 +159,23 @@ export function SettingsPanel() {
   // home. Pressing it also makes that backend the write target, which is what
   // choosing the page already said.
   const target: StorageBackend = draft.backend;
-  const pending = counts[target === "s3" ? "file" : "s3"].count;
-  const running = job.status === "running";
+  const pending = counts[target === 's3' ? 'file' : 's3'].count;
+  const running = job.status === 'running';
   // A bucket can only be used once it is stored, so the button says so rather
   // than failing on the settings it would have used.
-  const migrationBlocked = target === "s3" && dirty;
-  const done = job.total - job.failures.length;
+  const migrationBlocked = target === 's3' && dirty;
   const moveLabel =
-    target === "s3"
-      ? "Alles von der Festplatte nach S3 umziehen"
-      : "Alles aus S3 auf die Festplatte umziehen";
+    target === 's3'
+      ? 'Alles von der Festplatte nach S3 umziehen'
+      : 'Alles aus S3 auf die Festplatte umziehen';
   const moveNote =
-    target === "s3"
-      ? `${pending.toLocaleString("de-DE")} Objekte liegen noch auf der Festplatte; der Umzug kopiert sie in den Bucket, und Nachrichten und Chats bleiben unterwegs lesbar.`
-      : `${pending.toLocaleString("de-DE")} Objekte liegen noch in S3; der Umzug kopiert sie in das Archivverzeichnis, und Nachrichten und Chats bleiben unterwegs lesbar.`;
+    target === 's3'
+      ? `${pending.toLocaleString('de-DE')} Objekte liegen noch auf der Festplatte; der Umzug kopiert sie in den Bucket, und Nachrichten und Chats bleiben unterwegs lesbar.`
+      : `${pending.toLocaleString('de-DE')} Objekte liegen noch in S3; der Umzug kopiert sie in das Archivverzeichnis, und Nachrichten und Chats bleiben unterwegs lesbar.`;
   const migrationHint = migrationBlocked
-    ? "Erst die S3-Verbindung speichern"
+    ? 'Erst die S3-Verbindung speichern'
     : pending === 0
-      ? "Nichts umzuziehen"
+      ? 'Nichts umzuziehen'
       : undefined;
 
   return (
@@ -202,36 +201,35 @@ export function SettingsPanel() {
         <section className="settings-section">
           <h3>Speicherort</h3>
           <p className="settings-note">
-            Die Datenbank bleibt auf diesem Gerät. Hier stehen nur die Anhänge
-            und Profilbilder — der Großteil des Speichers.
+            Die Datenbank bleibt auf diesem Gerät. Hier stehen nur die Anhänge und Profilbilder —
+            der Großteil des Speichers.
           </p>
           <div className="storage-choice">
             <StorageOption
               icon={HardDrive}
               title="Auf der Festplatte"
-              detail={`${counts.file.count.toLocaleString("de-DE")} Objekte · ${dataSize(counts.file.bytes)}`}
-              active={draft.backend === "file"}
-              locked={lockedField("backend")}
-              onSelect={() => choose("file")}
+              detail={`${counts.file.count.toLocaleString('de-DE')} Objekte · ${dataSize(counts.file.bytes)}`}
+              active={draft.backend === 'file'}
+              locked={lockedField('backend')}
+              onSelect={() => choose('file')}
             />
             <StorageOption
               icon={Database}
               title="S3 / Objektspeicher"
-              detail={`${counts.s3.count.toLocaleString("de-DE")} Objekte · ${dataSize(counts.s3.bytes)}`}
-              active={draft.backend === "s3"}
-              locked={lockedField("backend")}
-              onSelect={() => choose("s3")}
+              detail={`${counts.s3.count.toLocaleString('de-DE')} Objekte · ${dataSize(counts.s3.bytes)}`}
+              active={draft.backend === 's3'}
+              locked={lockedField('backend')}
+              onSelect={() => choose('s3')}
             />
           </div>
         </section>
 
-        {draft.backend === "s3" ? (
+        {draft.backend === 's3' ? (
           <section className="settings-section">
             <h3>S3-Verbindung</h3>
             <p className="settings-note">
-              Alles, was SigV4 spricht: AWS S3, MinIO, Wasabi, Backblaze B2,
-              Cloudflare R2, Hetzner. Der geheimer Schlüssel wird nur lokal
-              gespeichert und nie an den Browser geschickt.
+              Alles, was SigV4 spricht: AWS S3, MinIO, Wasabi, Backblaze B2, Cloudflare R2, Hetzner.
+              Der geheimer Schlüssel wird nur lokal gespeichert und nie an den Browser geschickt.
             </p>
             <div className="settings-grid">
               <Field
@@ -239,67 +237,67 @@ export function SettingsPanel() {
                 label="Endpunkt"
                 placeholder="https://s3.eu-central-1.amazonaws.com"
                 value={draft.s3.endpoint}
-                locked={lockedField("s3.endpoint")}
-                hint={lockedField("s3.endpoint") ? "Kommt aus der Umgebung" : "Leer lassen für AWS"}
-                onChange={(endpoint) => update("endpoint", endpoint)}
+                locked={lockedField('s3.endpoint')}
+                hint={lockedField('s3.endpoint') ? 'Kommt aus der Umgebung' : 'Leer lassen für AWS'}
+                onChange={endpoint => update('endpoint', endpoint)}
               />
               <Field
                 id="s3-region"
                 label="Region"
                 placeholder="us-east-1"
                 value={draft.s3.region}
-                locked={lockedField("s3.region")}
-                onChange={(region) => update("region", region)}
+                locked={lockedField('s3.region')}
+                onChange={region => update('region', region)}
               />
               <Field
                 id="s3-bucket"
                 label="Bucket"
                 placeholder="schulcloud-archiv"
                 value={draft.s3.bucket}
-                locked={lockedField("s3.bucket")}
-                onChange={(bucket) => update("bucket", bucket)}
+                locked={lockedField('s3.bucket')}
+                onChange={bucket => update('bucket', bucket)}
               />
               <Field
                 id="s3-prefix"
                 label="Präfix"
                 placeholder="leer = im Bucket-Wurzelverzeichnis"
                 value={draft.s3.prefix}
-                locked={lockedField("s3.prefix")}
+                locked={lockedField('s3.prefix')}
                 hint="Mehrere Archive können sich ein Bucket teilen."
-                onChange={(prefix) => update("prefix", prefix)}
+                onChange={prefix => update('prefix', prefix)}
               />
               <Field
                 id="s3-access-key"
                 label="Zugriffsschlüssel"
                 autoComplete="off"
                 value={draft.s3.accessKeyId}
-                locked={lockedField("s3.accessKeyId")}
-                onChange={(accessKeyId) => update("accessKeyId", accessKeyId)}
+                locked={lockedField('s3.accessKeyId')}
+                onChange={accessKeyId => update('accessKeyId', accessKeyId)}
               />
               <Field
                 id="s3-secret-key"
                 label="Geheimer Schlüssel"
                 type="password"
                 autoComplete="new-password"
-                placeholder={secretStored ? "hinterlegt" : ""}
-                value={draft.s3.secretAccessKey ?? ""}
-                locked={lockedField("s3.secretAccessKey")}
+                placeholder={secretStored ? 'hinterlegt' : ''}
+                value={draft.s3.secretAccessKey ?? ''}
+                locked={lockedField('s3.secretAccessKey')}
                 hint={
-                  lockedField("s3.secretAccessKey")
-                    ? "Kommt aus der Umgebung"
+                  lockedField('s3.secretAccessKey')
+                    ? 'Kommt aus der Umgebung'
                     : secretStored
-                      ? "Leer lassen, um den gespeicherten zu behalten"
+                      ? 'Leer lassen, um den gespeicherten zu behalten'
                       : undefined
                 }
-                onChange={(secretAccessKey) => update("secretAccessKey", secretAccessKey)}
+                onChange={secretAccessKey => update('secretAccessKey', secretAccessKey)}
               />
               <label className="settings-toggle" htmlFor="s3-path-style">
                 <input
                   id="s3-path-style"
                   type="checkbox"
                   checked={draft.s3.pathStyle}
-                  disabled={lockedField("s3.pathStyle")}
-                  onChange={(event) => update("pathStyle", event.target.checked)}
+                  disabled={lockedField('s3.pathStyle')}
+                  onChange={event => update('pathStyle', event.target.checked)}
                 />
                 <span>
                   Pfad-Stil-Adressen
@@ -314,13 +312,15 @@ export function SettingsPanel() {
                 onClick={test}
                 disabled={busy !== null || running}
               >
-                {busy === "test" ? (
+                {busy === 'test' ? (
                   <>
-                    <Loader size={16} className="spin" />Prüft …
+                    <Loader size={16} className="spin" />
+                    Prüft …
                   </>
                 ) : (
                   <>
-                    <PlugZap size={16} />Verbindung testen
+                    <PlugZap size={16} />
+                    Verbindung testen
                   </>
                 )}
               </button>
@@ -330,7 +330,7 @@ export function SettingsPanel() {
                 onClick={save}
                 disabled={busy !== null || running || !dirty}
               >
-                {busy === "save" ? "Speichert …" : "Speichern"}
+                {busy === 'save' ? 'Speichert …' : 'Speichern'}
               </button>
             </div>
           </section>
@@ -339,10 +339,8 @@ export function SettingsPanel() {
         <section className="settings-section">
           <h3>Bestand umziehen</h3>
           <p className="settings-note">
-            Neue Dateien landen in{" "}
-            <strong>
-              {backend === "s3" ? s3.bucket || "S3" : `${settings.directory}/blobs/`}
-            </strong>
+            Neue Dateien landen in{' '}
+            <strong>{backend === 's3' ? s3.bucket || 'S3' : `${settings.directory}/blobs/`}</strong>
             . {moveNote}
           </p>
           {error ? (
@@ -363,27 +361,25 @@ export function SettingsPanel() {
                 <div className="progress-sweep" />
               </div>
               <p className="import-current">
-                {job.copied + job.alreadyThere + job.failures.length} von {job.total}{" "}
-                Objekten verarbeitet
+                {job.copied + job.alreadyThere + job.failures.length} von {job.total} Objekten
+                verarbeitet
                 {/* A bucket that is unreachable or refuses writes fails every
                     blob, and that is the one case where the count is the
                     message: it says to stop instead of waiting for 1381. */}
-                {job.failures.length
-                  ? ` · ${job.failures.length} fehlgeschlagen`
-                  : ""}
-                {job.current ? ` · ${job.current.slice(0, 8)}…` : ""}
+                {job.failures.length ? ` · ${job.failures.length} fehlgeschlagen` : ''}
+                {job.current ? ` · ${job.current.slice(0, 8)}…` : ''}
               </p>
             </div>
-          ) : job.status === "failed" ? (
+          ) : job.status === 'failed' ? (
             <p className="panel-error" role="alert">
               <AlertCircle size={16} />
-              {job.error || "Der Umzug wurde abgebrochen."}
+              {job.error || 'Der Umzug wurde abgebrochen.'}
             </p>
-          ) : job.status === "complete" ? (
+          ) : job.status === 'complete' ? (
             <p className="panel-proof">
               <Check size={15} />
-              {job.copied.toLocaleString("de-DE")} Objekte kopiert,{" "}
-              {job.alreadyThere.toLocaleString("de-DE")} bereits vorhanden.
+              {job.copied.toLocaleString('de-DE')} Objekte kopiert,{' '}
+              {job.alreadyThere.toLocaleString('de-DE')} bereits vorhanden.
             </p>
           ) : null}
           <div className="settings-actions">
@@ -394,29 +390,29 @@ export function SettingsPanel() {
               disabled={busy !== null || running || migrationBlocked || pending === 0}
               title={migrationHint}
             >
-              {busy === "migrate" ? (
+              {busy === 'migrate' ? (
                 <>
-                  <Loader size={16} className="spin" />Startet …
+                  <Loader size={16} className="spin" />
+                  Startet …
                 </>
               ) : (
                 <>
-                  <RefreshCw size={16} />{moveLabel}
+                  <RefreshCw size={16} />
+                  {moveLabel}
                 </>
               )}
             </button>
           </div>
           <p className="settings-fineprint">
-            Gespeichert in <code>{settings.directory}/settings.json</code> neben
-            dem Archiv, nur für diesen Benutzer lesbar. Der Schlüssel wird nicht
-            in Exporte oder die Datenbank geschrieben.
+            Gespeichert in <code>{settings.directory}/settings.json</code> neben dem Archiv, nur für
+            diesen Benutzer lesbar. Der Schlüssel wird nicht in Exporte oder die Datenbank
+            geschrieben.
           </p>
         </section>
       </div>
     </section>
   );
 }
-
-const settingsPath = "archive-data/settings.json";
 
 function StorageOption({
   icon: Icon,
@@ -436,7 +432,7 @@ function StorageOption({
   return (
     <button
       type="button"
-      className={`storage-option ${active ? "active" : ""}`}
+      className={`storage-option ${active ? 'active' : ''}`}
       aria-pressed={active}
       disabled={locked}
       onClick={onSelect}
@@ -455,19 +451,19 @@ function StorageOption({
 
 function emptyDraft(): StorageDraft {
   return {
-    backend: "file",
+    backend: 'file',
     s3: {
-      endpoint: "",
-      region: "",
-      bucket: "",
-      accessKeyId: "",
-      secretAccessKey: "",
-      prefix: "",
+      endpoint: '',
+      region: '',
+      bucket: '',
+      accessKeyId: '',
+      secretAccessKey: '',
+      prefix: '',
       pathStyle: false,
     },
   };
 }
 
 function draftOf(settings: StorageSettings): StorageDraft {
-  return { backend: settings.backend, s3: { ...settings.s3, secretAccessKey: "" } };
+  return { backend: settings.backend, s3: { ...settings.s3, secretAccessKey: '' } };
 }

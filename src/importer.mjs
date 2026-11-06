@@ -1,7 +1,7 @@
-import { StashcatClient } from "stashcat-api";
-import { importAvatars } from "./avatars.mjs";
-import { saveBlob } from "./storage.mjs";
-import { saveChat, saveMessage } from "./database.mjs";
+import { StashcatClient } from 'stashcat-api';
+import { importAvatars } from './avatars.mjs';
+import { saveChat, saveMessage } from './database.mjs';
+import { saveBlob } from './storage.mjs';
 
 const PAGE_SIZE = 50;
 
@@ -14,17 +14,17 @@ export async function importArchive(
   storage,
   credentials,
   output = console,
-  onProgress = () => {},
+  onProgress = () => {}
 ) {
   const run = db
     .prepare(
       `INSERT INTO import_runs (started_at, status)
-    VALUES (?, 'running')`,
+    VALUES (?, 'running')`
     )
     .run(new Date().toISOString());
   const runId = Number(run.lastInsertRowid);
-  const client = new StashcatClient({ baseUrl: "https://api.stashcat.com/" });
-  const report = (event) => {
+  const client = new StashcatClient({ baseUrl: 'https://api.stashcat.com/' });
+  const report = event => {
     try {
       onProgress(event);
     } catch {
@@ -32,32 +32,32 @@ export async function importArchive(
     }
   };
   const logging = {
-    log: (message) => {
+    log: message => {
       output.log(message);
-      report({ type: "log", level: "info", message: String(message) });
+      report({ type: 'log', level: 'info', message: String(message) });
     },
-    error: (message) => {
+    error: message => {
       output.error(message);
-      report({ type: "log", level: "error", message: String(message) });
+      report({ type: 'log', level: 'error', message: String(message) });
     },
   };
-  report({ type: "start", at: new Date().toISOString() });
+  report({ type: 'start', at: new Date().toISOString() });
   try {
-    logging.log("Anmeldung an schul.cloud …");
+    logging.log('Anmeldung an schul.cloud …');
     await client.login({
       email: credentials.email,
       password: credentials.password,
       securityPassword: credentials.securityPassword,
       encrypted: true,
-      appName: "schulcloud-archive",
+      appName: 'schulcloud-archive',
     });
     if (!client.isE2EUnlocked()) {
-      throw new Error("Verschlüsselung konnte nicht entsperrt werden.");
+      throw new Error('Verschlüsselung konnte nicht entsperrt werden.');
     }
     const own = await client.getMe();
     db.prepare(
       `INSERT INTO metadata (key, value) VALUES ('own_user_id', ?)
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`
     ).run(String(own.id));
     const companies = await client.getCompanies();
     const seen = new Set();
@@ -68,8 +68,8 @@ export async function importArchive(
         const key = `channel:${id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const chatId = saveChat(db, "channel", { ...chat, company_id: company.id });
-        await importChat(db, storage, client, "channel", chatId, logging, report, own.id);
+        const chatId = saveChat(db, 'channel', { ...chat, company_id: company.id });
+        await importChat(db, storage, client, 'channel', chatId, logging, report, own.id);
       }
     }
     for (const archived of [false, true]) {
@@ -78,39 +78,37 @@ export async function importArchive(
         const key = `conversation:${id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const chatId = saveChat(db, "conversation", chat, archived, String(own.id));
-        await importChat(db, storage, client, "conversation", chatId, logging, report, own.id);
+        const chatId = saveChat(db, 'conversation', chat, archived, String(own.id));
+        await importChat(db, storage, client, 'conversation', chatId, logging, report, own.id);
       }
     }
-    report({ type: "avatars" });
+    report({ type: 'avatars' });
     await importAvatars(db, storage, client, logging);
     const failed = db
       .prepare(
         `SELECT COUNT(*) AS n FROM chats
-      WHERE import_state IN ('failed', 'needs-review')`,
+      WHERE import_state IN ('failed', 'needs-review')`
       )
       .get().n;
     const failedFiles = db
       .prepare(
         `SELECT COUNT(*) AS n FROM files
-      WHERE status='failed'`,
+      WHERE status='failed'`
       )
       .get().n;
     db.prepare(
       `UPDATE import_runs SET finished_at=?, status=?, error=?
-      WHERE id=?`,
+      WHERE id=?`
     ).run(
       new Date().toISOString(),
-      failed || failedFiles ? "partial" : "complete",
-      failed || failedFiles
-        ? `${failed} Chats und ${failedFiles} Dateien prüfen`
-        : null,
-      runId,
+      failed || failedFiles ? 'partial' : 'complete',
+      failed || failedFiles ? `${failed} Chats und ${failedFiles} Dateien prüfen` : null,
+      runId
     );
     logging.log(`Fertig: ${seen.size} Chats geprüft.`);
     report({
-      type: "done",
-      status: failed || failedFiles ? "partial" : "complete",
+      type: 'done',
+      status: failed || failedFiles ? 'partial' : 'complete',
       chats: seen.size,
       failedChats: failed,
       failedFiles,
@@ -119,12 +117,12 @@ export async function importArchive(
   } catch (error) {
     db.prepare(
       `UPDATE import_runs SET finished_at=?, status='failed', error=?
-      WHERE id=?`,
+      WHERE id=?`
     ).run(new Date().toISOString(), String(error), runId);
-    report({ type: "failed", error: String(error) });
+    report({ type: 'failed', error: String(error) });
     throw error;
   } finally {
-    await Promise.resolve(client.logout()).catch((error) => {
+    await Promise.resolve(client.logout()).catch(error => {
       logging.error(`Logout fehlgeschlagen: ${error}`);
     });
   }
@@ -139,7 +137,7 @@ export async function* listConversations(client, archived) {
       offset,
       archive: archived ? 1 : 0,
     });
-    if (!Array.isArray(page)) throw new Error("Ungültige Konversationsliste");
+    if (!Array.isArray(page)) throw new Error('Ungültige Konversationsliste');
     if (page.length === 0) return;
     let fresh = 0;
     for (const chat of page) {
@@ -149,34 +147,22 @@ export async function* listConversations(client, archived) {
       fresh++;
       yield chat;
     }
-    if (fresh === 0)
-      throw new Error("Konversations-Paginierung wiederholt dieselbe Seite");
+    if (fresh === 0) throw new Error('Konversations-Paginierung wiederholt dieselbe Seite');
     offset += page.length;
   }
 }
 
-export async function importChat(
-  db,
-  storage,
-  client,
-  type,
-  id,
-  output,
-  report = () => {},
-  ownId = null,
-) {
-  const state = db
-    .prepare(`SELECT import_state FROM chats WHERE type=? AND id=?`)
-    .get(type, id);
-  if (state?.import_state === "complete") {
-    report({ type: "chat-skipped", chat: { type, id } });
+export async function importChat(db, storage, client, type, id, output, report = () => {}) {
+  const state = db.prepare(`SELECT import_state FROM chats WHERE type=? AND id=?`).get(type, id);
+  if (state?.import_state === 'complete') {
+    report({ type: 'chat-skipped', chat: { type, id } });
     return;
   }
   const title =
     db.prepare(`SELECT title FROM chats WHERE type=? AND id=?`).get(type, id)?.title ??
     `${type} ${id}`;
   output.log(`${type} ${id}: importiere …`);
-  report({ type: "chat-start", chat: { type, id, title } });
+  report({ type: 'chat-start', chat: { type, id, title } });
   let count = 0;
   let unverified = 0;
   let files = 0;
@@ -185,18 +171,16 @@ export async function importChat(
     for await (const message of listMessages(client, type, id)) {
       const result = saveMessage(db, type, id, message);
       count++;
-      if (result === "unverified") unverified++;
+      if (result === 'unverified') unverified++;
       for (const file of message.files || []) {
         if (file.encrypted && !aesKey) {
           try {
             aesKey =
-              type === "channel"
+              type === 'channel'
                 ? await client.getChannelAesKey(id)
                 : await client.getConversationAesKey(id);
           } catch (error) {
-            output.error(
-              `${type} ${id}: Dateischlüssel nicht verfügbar: ${error}`,
-            );
+            output.error(`${type} ${id}: Dateischlüssel nicht verfügbar: ${error}`);
           }
         }
         if (await importFile(db, storage, client, file, aesKey, output)) {
@@ -206,19 +190,17 @@ export async function importChat(
     }
     db.prepare(
       `UPDATE chats SET import_state=?, import_error=?, imported_at=?
-      WHERE type=? AND id=?`,
+      WHERE type=? AND id=?`
     ).run(
-      unverified ? "needs-review" : "complete",
-      unverified
-        ? `${unverified} verschlüsselte Nachrichten nicht verifiziert`
-        : null,
+      unverified ? 'needs-review' : 'complete',
+      unverified ? `${unverified} verschlüsselte Nachrichten nicht verifiziert` : null,
       new Date().toISOString(),
       type,
-      id,
+      id
     );
     output.log(`${type} ${id}: ${count} Nachrichten, ${unverified} ungeprüft`);
     report({
-      type: "chat-done",
+      type: 'chat-done',
       chat: { type, id, title },
       messages: count,
       unverified,
@@ -227,11 +209,11 @@ export async function importChat(
   } catch (error) {
     db.prepare(
       `UPDATE chats SET import_state='failed', import_error=?
-      WHERE type=? AND id=?`,
+      WHERE type=? AND id=?`
     ).run(String(error), type, id);
     output.error(`${type} ${id}: ${error}`);
     report({
-      type: "chat-failed",
+      type: 'chat-failed',
       chat: { type, id, title },
       messages: count,
       files,
@@ -249,7 +231,7 @@ export async function* listMessages(client, type, id) {
       limit: PAGE_SIZE,
       offset,
     });
-    if (!Array.isArray(page)) throw new Error("Ungültige Nachrichtenseite");
+    if (!Array.isArray(page)) throw new Error('Ungültige Nachrichtenseite');
     if (page.length === 0) return;
     let fresh = 0;
     for (const message of page) {
@@ -259,8 +241,7 @@ export async function* listMessages(client, type, id) {
       fresh++;
       yield message;
     }
-    if (fresh === 0)
-      throw new Error("Nachrichten-Paginierung wiederholt dieselbe Seite");
+    if (fresh === 0) throw new Error('Nachrichten-Paginierung wiederholt dieselbe Seite');
     offset += page.length;
   }
 }
@@ -268,23 +249,19 @@ export async function* listMessages(client, type, id) {
 async function importFile(db, storage, client, file, aesKey, output) {
   if (file.id == null) return false;
   const id = String(file.id);
-  const current = db.prepare("SELECT status FROM files WHERE id=?").get(id);
-  if (current?.status === "complete") return false;
+  const current = db.prepare('SELECT status FROM files WHERE id=?').get(id);
+  if (current?.status === 'complete') return false;
   try {
-    if (file.encrypted && !aesKey)
-      throw new Error("Kein Entschlüsselungsschlüssel");
+    if (file.encrypted && !aesKey) throw new Error('Kein Entschlüsselungsschlüssel');
     const bytes = await client.downloadFile(file, aesKey);
     const hash = await saveBlob(db, storage, bytes, file.mime);
     db.prepare(
       `UPDATE files SET blob_hash=?, status='complete', error=NULL
-      WHERE id=?`,
+      WHERE id=?`
     ).run(hash, id);
     return true;
   } catch (error) {
-    db.prepare(`UPDATE files SET status='failed', error=? WHERE id=?`).run(
-      String(error),
-      id,
-    );
+    db.prepare(`UPDATE files SET status='failed', error=? WHERE id=?`).run(String(error), id);
     output.error(`Datei ${id}: ${error}`);
     return false;
   }
