@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -7,12 +7,12 @@ import {
   HardDrive,
   Loader,
   MessageCircle,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { startImport } from "../api";
-import type { ImportCredentials } from "../api";
-import type { ImportRun, ImportState } from "../types";
-import { Field } from "./field";
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import type { ImportCredentials } from '../api';
+import { startImport } from '../api';
+import type { ImportRun, ImportState } from '../types';
+import { Field } from './field';
 
 interface ImportPanelProps {
   /** Owned by App, which holds the single progress stream. */
@@ -23,7 +23,7 @@ interface ImportPanelProps {
 }
 
 const idleState: ImportState = {
-  status: "idle",
+  status: 'idle',
   running: false,
   hasEnvCredentials: false,
   startedAt: null,
@@ -46,9 +46,9 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
   const feed = current.feed ?? [];
   const history = current.history ?? [];
   const [credentials, setCredentials] = useState<ImportCredentials>({
-    email: "",
-    password: "",
-    securityPassword: "",
+    email: '',
+    password: '',
+    securityPassword: '',
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -82,9 +82,7 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
     try {
       await startImport(current.hasEnvCredentials ? undefined : credentials);
     } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Import konnte nicht starten.",
-      );
+      setFormError(error instanceof Error ? error.message : 'Import konnte nicht starten.');
     } finally {
       setStarting(false);
     }
@@ -93,26 +91,31 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
   const needsForm = !current.hasEnvCredentials;
   const done = !current.running && Boolean(current.finishedAt);
   const outcome =
-    current.status === "failed"
-      ? "Import fehlgeschlagen"
-      : current.status === "partial"
-        ? "Import mit Rückfragen"
-        : "Import abgeschlossen";
+    current.status === 'failed'
+      ? 'Import fehlgeschlagen'
+      : current.status === 'partial'
+        ? 'Import mit Rückfragen'
+        : 'Import abgeschlossen';
 
   return (
     <section className="import-panel" aria-label="Archiv importieren">
       <header className="import-head">
-        <button className="import-back" type="button" onClick={onClose} aria-label="Zurück zur Chatliste">
+        <button
+          className="import-back"
+          type="button"
+          onClick={onClose}
+          aria-label="Zurück zur Chatliste"
+        >
           <ArrowLeft size={18} />
         </button>
         <div>
           <h2>Archiv importieren</h2>
           <p>
             {current.running
-              ? "Läuft im Hintergrund."
+              ? 'Läuft im Hintergrund.'
               : done
                 ? outcome
-                : "Liest Channels und Konversationen von schul.cloud."}
+                : 'Liest Channels und Konversationen von schul.cloud.'}
           </p>
         </div>
       </header>
@@ -142,11 +145,11 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
           <p className="import-current">
             {current.current
               ? `Lade ${current.current.title || current.current.id} …`
-              : "Verbinde mit schul.cloud …"}
+              : 'Verbinde mit schul.cloud …'}
           </p>
         ) : null}
 
-        {current.status === "failed" ? (
+        {current.status === 'failed' ? (
           <p className="panel-error" role="alert">
             <AlertCircle size={16} />
             {/* The importer normally supplies the reason; never leave a failed
@@ -154,16 +157,15 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
                 is untouched -- an interrupted import keeps what it already
                 fetched and can be resumed. */}
             {current.error ||
-              "Der Import wurde abgebrochen. Bereits geladene Nachrichten bleiben im Archiv und werden beim nächsten Lauf wiederverwendet."}
+              'Der Import wurde abgebrochen. Bereits geladene Nachrichten bleiben im Archiv und werden beim nächsten Lauf wiederverwendet.'}
           </p>
         ) : null}
 
-        {current.status === "partial" && !current.running ? (
+        {current.status === 'partial' && !current.running ? (
           <p className="panel-note">
             <AlertCircle size={16} />
-            {plural(current.failedChats, "Chat", "Chats")} und{" "}
-            {current.failedFiles} Dateien müssen geprüft werden. Sie sind in der
-            Übersicht mit „Prüfen“ markiert.
+            {plural(current.failedChats, 'Chat', 'Chats')} und {current.failedFiles} Dateien müssen
+            geprüft werden. Sie sind in der Übersicht mit „Prüfen“ markiert.
           </p>
         ) : null}
 
@@ -173,7 +175,7 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
               .slice()
               .reverse()
               .slice(0, 6)
-              .map((line) => (
+              .map(line => (
                 <li key={`${line.at}-${line.message}`} className={line.level}>
                   {line.message}
                 </li>
@@ -183,15 +185,15 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
 
         {formError ? (
           <p className="panel-error" role="alert">
-            <AlertCircle size={16} />{formError}
+            <AlertCircle size={16} />
+            {formError}
           </p>
         ) : null}
 
         {!current.running && needsForm ? (
           <div className="credentials">
             <p className="credentials-note">
-              Die Zugangsdaten gelten nur für diesen Lauf und werden nirgends
-              gespeichert.
+              Die Zugangsdaten gelten nur für diesen Lauf und werden nirgends gespeichert.
             </p>
             <Field
               id="import-email"
@@ -200,7 +202,7 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
               autoComplete="username"
               inputRef={emailRef}
               value={credentials.email}
-              onChange={(email) => setCredentials((c) => ({ ...c, email }))}
+              onChange={email => setCredentials(c => ({ ...c, email }))}
             />
             <Field
               id="import-password"
@@ -208,7 +210,7 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
               type="password"
               autoComplete="current-password"
               value={credentials.password}
-              onChange={(password) => setCredentials((c) => ({ ...c, password }))}
+              onChange={password => setCredentials(c => ({ ...c, password }))}
             />
             <Field
               id="import-security"
@@ -216,16 +218,15 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
               type="password"
               autoComplete="current-password"
               value={credentials.securityPassword}
-              onChange={(securityPassword) =>
-                setCredentials((c) => ({ ...c, securityPassword }))
-              }
+              onChange={securityPassword => setCredentials(c => ({ ...c, securityPassword }))}
             />
           </div>
         ) : null}
 
         {done && !current.running ? (
           <p className="panel-proof">
-            <Check size={15} />Archiv ist aktualisiert
+            <Check size={15} />
+            Archiv ist aktualisiert
           </p>
         ) : null}
 
@@ -254,13 +255,15 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
             >
               {starting ? (
                 <>
-                  <Loader size={17} className="spin" />Startet …
+                  <Loader size={17} className="spin" />
+                  Startet …
                 </>
               ) : done ? (
-                "Erneut importieren"
+                'Erneut importieren'
               ) : (
                 <>
-                  <CloudDownload size={17} />Import starten
+                  <CloudDownload size={17} />
+                  Import starten
                 </>
               )}
             </button>
@@ -272,22 +275,22 @@ export function ImportPanel({ state, onClose, onFinished }: ImportPanelProps) {
 }
 
 function runLabel(run: ImportRun) {
-  if (run.status === "complete") return "vollständig";
-  if (run.status === "partial") return "mit Rückfragen";
-  if (run.status === "running") return "läuft noch";
-  return "fehlgeschlagen";
+  if (run.status === 'complete') return 'vollständig';
+  if (run.status === 'partial') return 'mit Rückfragen';
+  if (run.status === 'running') return 'läuft noch';
+  return 'fehlgeschlagen';
 }
 
 function runTime(run: ImportRun) {
   const stamp = run.finished_at ?? run.started_at;
   const date = new Date(stamp);
   if (Number.isNaN(date.valueOf())) return stamp;
-  return date.toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+  return date.toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -308,9 +311,9 @@ function Stat({
   warn?: boolean;
 }) {
   return (
-    <div className={`stat ${warn ? "warn" : ""}`}>
+    <div className={`stat ${warn ? 'warn' : ''}`}>
       <Icon size={16} />
-      <strong>{value.toLocaleString("de-DE")}</strong>
+      <strong>{value.toLocaleString('de-DE')}</strong>
       <span>{label}</span>
     </div>
   );

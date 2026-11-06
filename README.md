@@ -130,13 +130,13 @@ The archive and viewer run locally on your device. Import connects to `https://a
 
 ## Storage format / Speicherformat
 
-| Table / Tabelle | Contents / Inhalt |
-| --- | --- |
-| `chats` | Channels, conversations, import status / Channels, Konversationen, Importstatus |
-| `people` | Senders and local avatar references / Absender und lokale Profilbild-Verweise |
-| `messages` | Text, time, sender, reply link, full API response / Text, Zeit, Absender, Antwortbezug, vollständige API-Antwort |
-| `files`, `message_files` | Attachments and message links / Anhänge und Nachrichten-Zuordnung |
-| `blobs` | Content-addressed file and image data, plus the backend that holds them / Inhaltsadressierte Dateien und Bilder samt dem Speicherort ihrer Bytes (`storage`, `object_key`) |
-| `import_runs` | Import attempt status / Status der Importversuche |
+| Table / Tabelle          | Contents / Inhalt                                                                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chats`                  | Channels, conversations, import status / Channels, Konversationen, Importstatus                                                                                            |
+| `people`                 | Senders and local avatar references / Absender und lokale Profilbild-Verweise                                                                                              |
+| `messages`               | Text, time, sender, reply link, full API response / Text, Zeit, Absender, Antwortbezug, vollständige API-Antwort                                                           |
+| `files`, `message_files` | Attachments and message links / Anhänge und Nachrichten-Zuordnung                                                                                                          |
+| `blobs`                  | Content-addressed file and image data, plus the backend that holds them / Inhaltsadressierte Dateien und Bilder samt dem Speicherort ihrer Bytes (`storage`, `object_key`) |
+| `import_runs`            | Import attempt status / Status der Importversuche                                                                                                                          |
 
 `raw_json` preserves API responses for future format improvements. / `raw_json` bewahrt API-Antworten für spätere Formatverbesserungen auf.

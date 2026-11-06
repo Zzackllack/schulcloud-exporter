@@ -1,6 +1,6 @@
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { Components } from "react-markdown";
+import type { Components } from 'react-markdown';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // Messages are written by other people, so the renderer must never be able to
 // execute or inject anything. react-markdown builds React elements directly --

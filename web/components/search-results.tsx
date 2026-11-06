@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import { SearchX } from "lucide-react";
-import { searchMessages } from "../api";
-import { shortDate } from "../format";
-import type { SearchHit } from "../types";
+import { SearchX } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
+import { searchMessages } from '../api';
+import { shortDate } from '../format';
+import type { SearchHit } from '../types';
 
 /** Sentinel pair the API wraps matches in. Never HTML -- see Highlight. */
-const MARK_OPEN = "\u0001";
-const MARK_CLOSE = "\u0002";
+const MARK_OPEN = '\u0001';
+const MARK_CLOSE = '\u0002';
 
 const DEBOUNCE_MS = 220;
 
@@ -28,16 +28,14 @@ export function SearchResults({ query }: { query: string }) {
     const timer = setTimeout(() => {
       setSearching(true);
       searchMessages(trimmed, controller.signal)
-        .then((page) => {
+        .then(page => {
           setHits(page.results);
           setError(null);
         })
         .catch((cause: unknown) => {
           if (controller.signal.aborted) return;
           setHits([]);
-          setError(
-            cause instanceof Error ? cause.message : "Suche fehlgeschlagen.",
-          );
+          setError(cause instanceof Error ? cause.message : 'Suche fehlgeschlagen.');
         })
         .finally(() => {
           if (!controller.signal.aborted) setSearching(false);
@@ -73,10 +71,10 @@ export function SearchResults({ query }: { query: string }) {
     <div className="chat-list">
       <div className="search-summary" role="status">
         {searching && !hits.length
-          ? "Suche läuft …"
-          : `${hits.length} Treffer${hits.length === 50 ? "+" : ""} für „${query.trim()}“`}
+          ? 'Suche läuft …'
+          : `${hits.length} Treffer${hits.length === 50 ? '+' : ''} für „${query.trim()}“`}
       </div>
-      {hits.map((hit) => (
+      {hits.map(hit => (
         <Link
           key={`${hit.chat_type}/${hit.chat_id}/${hit.id}`}
           to={`/chats/${hit.chat_type}/${encodeURIComponent(hit.chat_id)}`}
@@ -114,7 +112,7 @@ export function SearchResults({ query }: { query: string }) {
  * altered.
  */
 function tidy(text: string) {
-  return text.replace(/\*\*|__/g, "");
+  return text.replace(/\*\*|__/g, '');
 }
 
 /**
@@ -146,7 +144,7 @@ function Highlight({ snippet }: { snippet: string }) {
     parts.push(
       <mark className="search-mark" key={`m${key++}`}>
         {rest.slice(open + 1, close)}
-      </mark>,
+      </mark>
     );
     rest = rest.slice(close + 1);
   }

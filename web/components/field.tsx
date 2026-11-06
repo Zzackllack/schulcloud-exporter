@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import type { ReactNode, Ref } from 'react';
 
 interface FieldProps {
   id: string;
@@ -25,7 +25,7 @@ interface FieldProps {
 export function Field({
   id,
   label,
-  type = "text",
+  type = 'text',
   autoComplete,
   placeholder,
   value,
@@ -45,7 +45,7 @@ export function Field({
         placeholder={placeholder}
         value={value}
         disabled={locked}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={event => onChange(event.target.value)}
       />
       {hint ? <small className="field-hint">{hint}</small> : null}
     </label>

@@ -20,34 +20,32 @@ export async function readCredentials() {
   const credentials = { email: null, password: null, securityPassword: null };
   if (!process.stdin.isTTY) {
     throw new Error(
-      "Für die Anmeldung ist ein Terminal nötig. Zugangsdaten können alternativ als Prozess-Umgebungsvariablen übergeben werden.",
+      'Für die Anmeldung ist ein Terminal nötig. Zugangsdaten können alternativ als Prozess-Umgebungsvariablen übergeben werden.'
     );
   }
-  credentials.email = await hiddenQuestion("schul.cloud E-Mail: ");
-  credentials.password = await hiddenQuestion("Account-Kennwort: ");
-  credentials.securityPassword = await hiddenQuestion(
-    "Verschlüsselungskennwort: ",
-  );
-  if (Object.values(credentials).some((value) => !value)) {
-    throw new Error("Alle drei Anmeldedaten werden benötigt.");
+  credentials.email = await hiddenQuestion('schul.cloud E-Mail: ');
+  credentials.password = await hiddenQuestion('Account-Kennwort: ');
+  credentials.securityPassword = await hiddenQuestion('Verschlüsselungskennwort: ');
+  if (Object.values(credentials).some(value => !value)) {
+    throw new Error('Alle drei Anmeldedaten werden benötigt.');
   }
   return credentials;
 }
 
 function hiddenQuestion(prompt) {
   return new Promise((resolve, reject) => {
-    let value = "";
+    let value = '';
     const input = process.stdin;
     let rawModeEnabled = false;
     let onData = null;
     const cleanup = () => {
-      if (onData) input.off("data", onData);
+      if (onData) input.off('data', onData);
       if (rawModeEnabled) {
         input.setRawMode(false);
         rawModeEnabled = false;
       }
       input.pause();
-      process.stdout.write("\n");
+      process.stdout.write('\n');
     };
     process.stdout.write(prompt);
     try {
@@ -59,21 +57,19 @@ function hiddenQuestion(prompt) {
       reject(error);
       return;
     }
-    const finish = (error) => {
+    const finish = error => {
       cleanup();
       if (error) reject(error);
       else resolve(value);
     };
-    onData = (buffer) => {
-      for (const character of buffer.toString("utf8")) {
-        if (character === "\r" || character === "\n") return finish();
-        if (character === "\u0003")
-          return finish(new Error("Eingabe abgebrochen"));
-        if (character === "\u007f" || character === "\b")
-          value = value.slice(0, -1);
-        else if (character >= " ") value += character;
+    onData = buffer => {
+      for (const character of buffer.toString('utf8')) {
+        if (character === '\r' || character === '\n') return finish();
+        if (character === '\u0003') return finish(new Error('Eingabe abgebrochen'));
+        if (character === '\u007f' || character === '\b') value = value.slice(0, -1);
+        else if (character >= ' ') value += character;
       }
     };
-    input.on("data", onData);
+    input.on('data', onData);
   });
 }

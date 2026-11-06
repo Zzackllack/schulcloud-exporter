@@ -1,6 +1,6 @@
-import { Component } from "react";
-import type { ErrorInfo, ReactNode } from "react";
-import { AlertCircle, RotateCcw } from "lucide-react";
+import { AlertCircle, RotateCcw } from 'lucide-react';
+import type { ErrorInfo, ReactNode } from 'react';
+import { Component } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("Ansicht konnte nicht dargestellt werden:", error, info);
+    console.error('Ansicht konnte nicht dargestellt werden:', error, info);
   }
 
   render() {
@@ -40,8 +40,8 @@ export class ErrorBoundary extends Component<Props, State> {
           </span>
           <h1>Ansicht konnte nicht geladen werden</h1>
           <p>
-            In der Webansicht ist ein Fehler aufgetreten. Das Archiv auf der
-            Platte ist unverändert; ein Neuladen genügt meistens.
+            In der Webansicht ist ein Fehler aufgetreten. Das Archiv auf der Platte ist unverändert;
+            ein Neuladen genügt meistens.
           </p>
           {error.message ? <p className="fatal-detail">{error.message}</p> : null}
           <button
@@ -49,7 +49,8 @@ export class ErrorBoundary extends Component<Props, State> {
             type="button"
             onClick={() => this.setState({ error: null })}
           >
-            <RotateCcw size={16} />Erneut versuchen
+            <RotateCcw size={16} />
+            Erneut versuchen
           </button>
         </div>
       </div>

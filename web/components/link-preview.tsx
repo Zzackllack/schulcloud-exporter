@@ -1,5 +1,5 @@
-import { ExternalLink } from "lucide-react";
-import type { LinkPreview } from "../types";
+import { ExternalLink } from 'lucide-react';
+import type { LinkPreview } from '../types';
 
 /**
  * A link the API unfurled: title, domain, and whatever description came with
@@ -23,17 +23,15 @@ export function LinkPreviewCard({ link }: { link: LinkPreview }) {
         <ExternalLink size={13} aria-hidden="true" />
       </span>
       <span className="link-domain">{domain(link.url)}</span>
-      {link.description ? (
-        <span className="link-description">{link.description}</span>
-      ) : null}
+      {link.description ? <span className="link-description">{link.description}</span> : null}
     </a>
   );
 }
 
 function domain(url: string) {
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    return new URL(url).hostname.replace(/^www\./, '');
   } catch {
-    return "";
+    return '';
   }
 }

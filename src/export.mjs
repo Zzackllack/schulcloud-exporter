@@ -1,17 +1,16 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { once } from "node:events";
-import { join } from "node:path";
+import { once } from 'node:events';
+import { createWriteStream } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 async function writeJsonLines(path, rows) {
   const stream = createWriteStream(path, { mode: 0o600 });
   try {
     for (const row of rows) {
-      if (!stream.write(`${JSON.stringify(row)}\n`))
-        await once(stream, "drain");
+      if (!stream.write(`${JSON.stringify(row)}\n`)) await once(stream, 'drain');
     }
     stream.end();
-    await once(stream, "finish");
+    await once(stream, 'finish');
   } catch (error) {
     stream.destroy();
     throw error;
@@ -19,43 +18,34 @@ async function writeJsonLines(path, rows) {
 }
 
 export async function exportJson(db, directory) {
-  const destination = join(directory, "json-export");
+  const destination = join(directory, 'json-export');
   await mkdir(destination, { recursive: true, mode: 0o700 });
   const datasets = [
-    ["chats", "SELECT * FROM chats ORDER BY type, id"],
-    ["people", "SELECT * FROM people ORDER BY id"],
-    [
-      "messages",
-      "SELECT * FROM messages ORDER BY chat_type, chat_id, created_at, id",
-    ],
-    ["files", "SELECT * FROM files ORDER BY id"],
-    [
-      "message_files",
-      "SELECT * FROM message_files ORDER BY message_id, file_id",
-    ],
-    ["blobs", "SELECT * FROM blobs ORDER BY hash"],
-    ["metadata", "SELECT * FROM metadata ORDER BY key"],
-    ["import_runs", "SELECT * FROM import_runs ORDER BY id"],
+    ['chats', 'SELECT * FROM chats ORDER BY type, id'],
+    ['people', 'SELECT * FROM people ORDER BY id'],
+    ['messages', 'SELECT * FROM messages ORDER BY chat_type, chat_id, created_at, id'],
+    ['files', 'SELECT * FROM files ORDER BY id'],
+    ['message_files', 'SELECT * FROM message_files ORDER BY message_id, file_id'],
+    ['blobs', 'SELECT * FROM blobs ORDER BY hash'],
+    ['metadata', 'SELECT * FROM metadata ORDER BY key'],
+    ['import_runs', 'SELECT * FROM import_runs ORDER BY id'],
   ];
   for (const [name, query] of datasets) {
-    await writeJsonLines(
-      join(destination, `${name}.jsonl`),
-      db.prepare(query).iterate(),
-    );
+    await writeJsonLines(join(destination, `${name}.jsonl`), db.prepare(query).iterate());
   }
   await writeFile(
-    join(destination, "manifest.json"),
+    join(destination, 'manifest.json'),
     JSON.stringify(
       {
-        format: "schulcloud-archive-v1",
+        format: 'schulcloud-archive-v1',
         exported_at: new Date().toISOString(),
         content: datasets.map(([name]) => `${name}.jsonl`),
-        blobs: "../blobs/",
+        blobs: '../blobs/',
       },
       null,
-      2,
+      2
     ),
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   return destination;
 }

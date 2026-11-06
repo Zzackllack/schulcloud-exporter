@@ -1,5 +1,5 @@
-import { importArchive } from "./importer.mjs";
-import { credentialsFromEnv } from "./credentials.mjs";
+import { credentialsFromEnv } from './credentials.mjs';
+import { importArchive } from './importer.mjs';
 
 const HISTORY_LIMIT = 10;
 
@@ -10,7 +10,7 @@ const LOG_LIMIT = 400;
 const FEED_LIMIT = 60;
 
 const idle = () => ({
-  status: "idle",
+  status: 'idle',
   startedAt: null,
   finishedAt: null,
   chats: 0,
@@ -57,7 +57,7 @@ export function importHistory(db) {
   return db
     .prepare(
       `SELECT id, started_at, finished_at, status, error
-       FROM import_runs ORDER BY id DESC LIMIT ?`,
+       FROM import_runs ORDER BY id DESC LIMIT ?`
     )
     .all(HISTORY_LIMIT);
 }
@@ -116,7 +116,7 @@ function emit(event) {
   }
 }
 
-function set(patch, event = { type: "status" }) {
+function set(patch, event = { type: 'status' }) {
   state = { ...state, ...patch };
   emit(event);
 }
@@ -130,15 +130,12 @@ function note(level, message) {
       // derived from the same place the feed is built. Counting them in the
       // chat events as well would double-count, since a failing chat both
       // logs a line and reports chat-failed.
-      errors: level === "error" ? state.errors + 1 : state.errors,
+      errors: level === 'error' ? state.errors + 1 : state.errors,
       // Errors earn a place in the feed because they are what the reader is
       // looking for; routine progress would drown them out.
-      feed:
-        level === "error"
-          ? [...state.feed, entry].slice(-FEED_LIMIT)
-          : state.feed,
+      feed: level === 'error' ? [...state.feed, entry].slice(-FEED_LIMIT) : state.feed,
     },
-    { type: "log", level, message },
+    { type: 'log', level, message }
   );
 }
 
@@ -160,32 +157,32 @@ export function isImporting() {
  */
 export async function startImport(db, storage, submitted) {
   if (running) {
-    const error = new Error("Es läuft bereits ein Import.");
+    const error = new Error('Es läuft bereits ein Import.');
     error.status = 409;
     throw error;
   }
   const fromEnv = credentialsFromEnv();
   if (!fromEnv && !submitted?.email) {
     const error = new Error(
-      "Zugangsdaten fehlen. Setze SCHULCLOUD_EMAIL, SCHULCLOUD_PASSWORD und SCHULCLOUD_SECURITY_PASSWORD oder trage sie im Dialog ein.",
+      'Zugangsdaten fehlen. Setze SCHULCLOUD_EMAIL, SCHULCLOUD_PASSWORD und SCHULCLOUD_SECURITY_PASSWORD oder trage sie im Dialog ein.'
     );
     error.status = 400;
     throw error;
   }
   const credentials = fromEnv ?? {
-    email: String(submitted.email || ""),
-    password: String(submitted.password || ""),
-    securityPassword: String(submitted.securityPassword || ""),
+    email: String(submitted.email || ''),
+    password: String(submitted.password || ''),
+    securityPassword: String(submitted.securityPassword || ''),
   };
   if (!credentials.email || !credentials.password || !credentials.securityPassword) {
-    const error = new Error("Alle drei Anmeldedaten werden benötigt.");
+    const error = new Error('Alle drei Anmeldedaten werden benötigt.');
     error.status = 400;
     throw error;
   }
 
   state = {
     ...idle(),
-    status: "running",
+    status: 'running',
     startedAt: new Date().toISOString(),
     // Make it obvious in the UI that no secret is stored anywhere.
     credentialsInEnv: Boolean(fromEnv),
@@ -196,10 +193,10 @@ export async function startImport(db, storage, submitted) {
     storage,
     credentials,
     {
-      log: (message) => note("info", message),
-      error: (message) => note("error", message),
+      log: message => note('info', message),
+      error: message => note('error', message),
     },
-    onProgress,
+    onProgress
   );
   running = task;
   // The terminal `done`/`failed` event fires while `running` is still set, so
@@ -210,14 +207,14 @@ export async function startImport(db, storage, submitted) {
     // A run that ends without a terminal event must not leave the viewer
     // showing "running" while nothing is running, so normalise the status here
     // rather than trusting the importer to have reported one.
-    const terminal = ["complete", "partial", "failed"].includes(state.status);
+    const terminal = ['complete', 'partial', 'failed'].includes(state.status);
     set(
       {
-        status: terminal ? state.status : "failed",
+        status: terminal ? state.status : 'failed',
         finishedAt: state.finishedAt ?? new Date().toISOString(),
         current: null,
       },
-      { type: "settled" },
+      { type: 'settled' }
     );
   };
   task.then(settle, settle);
@@ -226,10 +223,10 @@ export async function startImport(db, storage, submitted) {
 
 function onProgress(event) {
   switch (event.type) {
-    case "chat-start":
-      set({ current: event.chat }, { type: "chat-start", chat: event.chat });
+    case 'chat-start':
+      set({ current: event.chat }, { type: 'chat-start', chat: event.chat });
       break;
-    case "chat-done":
+    case 'chat-done':
       set(
         {
           chats: state.chats + 1,
@@ -237,10 +234,10 @@ function onProgress(event) {
           files: state.files + event.files,
           current: null,
         },
-        { type: "chat-done", chat: event.chat, messages: event.messages },
+        { type: 'chat-done', chat: event.chat, messages: event.messages }
       );
       break;
-    case "chat-failed":
+    case 'chat-failed':
       set(
         {
           chats: state.chats + 1,
@@ -249,10 +246,10 @@ function onProgress(event) {
           failedChats: state.failedChats + 1,
           current: null,
         },
-        { type: "chat-failed", chat: event.chat, error: event.error },
+        { type: 'chat-failed', chat: event.chat, error: event.error }
       );
       break;
-    case "done":
+    case 'done':
       set(
         {
           status: event.status,
@@ -261,20 +258,20 @@ function onProgress(event) {
           failedChats: event.failedChats,
           failedFiles: event.failedFiles,
         },
-        { type: "done", status: event.status },
+        { type: 'done', status: event.status }
       );
       break;
-    case "failed":
+    case 'failed':
       set(
         {
-          status: "failed",
+          status: 'failed',
           current: null,
           finishedAt: new Date().toISOString(),
           error: event.error,
           // The thrown message is surfaced separately from the log feed, so it
           // is not counted a second time here.
         },
-        { type: "failed", error: event.error },
+        { type: 'failed', error: event.error }
       );
       break;
     default:

@@ -1,17 +1,16 @@
-import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
-import { Readable } from "node:stream";
 import {
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
-} from "@aws-sdk/client-s3";
-import { BACKENDS, normalizeS3 } from "./settings.mjs";
+} from '@aws-sdk/client-s3';
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { BACKENDS, normalizeS3 } from './settings.mjs';
 
 /**
  * Blob storage: two backends behind one interface, and a record of which one
@@ -27,23 +26,23 @@ const HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 /** Local disk: `archive-data/blobs/<first byte>/<hash>`, 0600. */
 export function createFileStore(directory) {
-  const root = join(directory, "blobs");
-  const pathFor = (hash) => join(root, hash.slice(0, 2), hash);
+  const root = join(directory, 'blobs');
+  const pathFor = hash => join(root, hash.slice(0, 2), hash);
 
   return {
-    name: "file",
+    name: 'file',
     locationKey: () => null,
     async put(hash, bytes) {
       const folder = join(root, hash.slice(0, 2));
       await mkdir(folder, { recursive: true, mode: 0o700 });
       try {
-        await writeFile(pathFor(hash), bytes, { flag: "wx", mode: 0o600 });
+        await writeFile(pathFor(hash), bytes, { flag: 'wx', mode: 0o600 });
       } catch (error) {
         // A second attachment with the same hash is the same bytes; the flag
         // keeps a partial write from being clobbered mid-import.
-        if (error.code !== "EEXIST") throw error;
+        if (error.code !== 'EEXIST') throw error;
       }
-      return { storage: "file", key: null };
+      return { storage: 'file', key: null };
     },
     async open(row) {
       const path = pathFor(row.hash);
@@ -70,31 +69,33 @@ export function createFileStore(directory) {
 export function createS3Store(config, client = null) {
   const s3 = normalizeS3(config);
   if (!s3.bucket) {
-    throw new Error("S3-Bucket fehlt; gespeicherte Objekte sind nicht erreichbar.");
+    throw new Error('S3-Bucket fehlt; gespeicherte Objekte sind nicht erreichbar.');
   }
-  const client_ = client ?? new S3Client({
-    region: s3.region || "us-east-1",
-    // Without an endpoint the SDK derives the regional AWS one, which is what
-    // "just my bucket" should mean.
-    endpoint: s3.endpoint || undefined,
-    // MinIO and the smaller providers are path-style only; AWS and most others
-    // are virtual-host. Getting this wrong fails as a 404 on every object.
-    forcePathStyle: s3.pathStyle,
-    credentials: {
-      accessKeyId: s3.accessKeyId,
-      secretAccessKey: s3.secretAccessKey,
-    },
-    // AWS wants a checksum header on upload; a good half of the compatible
-    // providers answer with a hard error when they see one. Sending it only
-    // when the endpoint demands it is what makes both work.
-    requestChecksumCalculation: "WHEN_REQUIRED",
-    responseChecksumValidation: "WHEN_REQUIRED",
-    maxAttempts: 3,
-  });
-  const keyFor = (hash) => `${s3.prefix}blobs/${hash.slice(0, 2)}/${hash}`;
+  const client_ =
+    client ??
+    new S3Client({
+      region: s3.region || 'us-east-1',
+      // Without an endpoint the SDK derives the regional AWS one, which is what
+      // "just my bucket" should mean.
+      endpoint: s3.endpoint || undefined,
+      // MinIO and the smaller providers are path-style only; AWS and most others
+      // are virtual-host. Getting this wrong fails as a 404 on every object.
+      forcePathStyle: s3.pathStyle,
+      credentials: {
+        accessKeyId: s3.accessKeyId,
+        secretAccessKey: s3.secretAccessKey,
+      },
+      // AWS wants a checksum header on upload; a good half of the compatible
+      // providers answer with a hard error when they see one. Sending it only
+      // when the endpoint demands it is what makes both work.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
+      maxAttempts: 3,
+    });
+  const keyFor = hash => `${s3.prefix}blobs/${hash.slice(0, 2)}/${hash}`;
 
   return {
-    name: "s3",
+    name: 's3',
     bucket: s3.bucket,
     keyFor,
     locationKey: keyFor,
@@ -107,9 +108,9 @@ export function createS3Store(config, client = null) {
           Body: bytes,
           ContentType: mediaType || undefined,
           ContentLength: bytes.length,
-        }),
+        })
       );
-      return { storage: "s3", key: keyFor(hash) };
+      return { storage: 's3', key: keyFor(hash) };
     },
     async open(row) {
       const out = await client_.send(
@@ -118,7 +119,7 @@ export function createS3Store(config, client = null) {
           // The recorded key wins over the derived one: it is what keeps
           // objects readable after the prefix changes.
           Key: row.object_key || keyFor(row.hash),
-        }),
+        })
       );
       if (!out.Body) return null;
       return {
@@ -128,9 +129,7 @@ export function createS3Store(config, client = null) {
     },
     async has(hash) {
       try {
-        await client_.send(
-          new HeadObjectCommand({ Bucket: s3.bucket, Key: keyFor(hash) }),
-        );
+        await client_.send(new HeadObjectCommand({ Bucket: s3.bucket, Key: keyFor(hash) }));
         return true;
       } catch (error) {
         if (isMissing(error)) return false;
@@ -144,7 +143,7 @@ export function createS3Store(config, client = null) {
           Bucket: s3.bucket,
           Prefix: s3.prefix || undefined,
           MaxKeys: 1,
-        }),
+        })
       );
       return out.$metadata?.httpStatusCode ?? 200;
     },
@@ -155,18 +154,22 @@ export function createS3Store(config, client = null) {
 // two key paths reported it. Anything else -- bad credentials, no such bucket,
 // a dead endpoint -- is a real error and must not be read as "absent".
 function isMissing(error) {
-  return error?.name === "NoSuchKey" || error?.name === "NotFound" || error?.$metadata?.httpStatusCode === 404;
+  return (
+    error?.name === 'NoSuchKey' ||
+    error?.name === 'NotFound' ||
+    error?.$metadata?.httpStatusCode === 404
+  );
 }
 
 function collapse(value) {
-  return String(value).replace(/\s+/g, " ").trim();
+  return String(value).replace(/\s+/g, ' ').trim();
 }
 
 function contentTypeOf(headers) {
-  if (!headers) return "";
+  if (!headers) return '';
   const value =
-    typeof headers.get === "function" ? headers.get("content-type") : headers["content-type"];
-  return value ? String(value) : "";
+    typeof headers.get === 'function' ? headers.get('content-type') : headers['content-type'];
+  return value ? String(value) : '';
 }
 
 /**
@@ -185,19 +188,19 @@ export function describeStoreError(error) {
   const response = error?.$response ?? error?.response ?? {};
   // On a deserialisation failure the SDK leaves the reply as a plain string;
   // anything else has already been turned into a message worth repeating.
-  const raw = typeof response.body === "string" ? collapse(response.body).slice(0, 300) : "";
+  const raw = typeof response.body === 'string' ? collapse(response.body).slice(0, 300) : '';
   const detail = raw || collapse(error?.message || error);
-  const contentType = contentTypeOf(response.headers).split(";")[0];
+  const contentType = contentTypeOf(response.headers).split(';')[0];
   const looksForeign = contentType && !/xml/i.test(contentType);
   const parseFailure = /Deserialization|parse error/i.test(detail);
   // A bucket that answers with a proper XML error is the readable case, and
   // there is nothing to add to "HTTP 403: AccessDenied".
   const hint =
     looksForeign || (parseFailure && !contentType)
-      ? ` — der Endpunkt hat nicht mit S3-XML geantwortet${contentType ? ` (${contentType})` : ""}`
-      : "";
-  return `${status ? `HTTP ${status}` : error?.name || "Fehler"}: ${detail}${hint}${
-    requestId ? ` (Anfrage ${requestId})` : ""
+      ? ` — der Endpunkt hat nicht mit S3-XML geantwortet${contentType ? ` (${contentType})` : ''}`
+      : '';
+  return `${status ? `HTTP ${status}` : error?.name || 'Fehler'}: ${detail}${hint}${
+    requestId ? ` (Anfrage ${requestId})` : ''
   }`;
 }
 
@@ -226,7 +229,7 @@ export function createBlobStorage(settings, directory) {
   }
 
   const storage = {
-    name: "blobs",
+    name: 'blobs',
     directory,
     file,
     get settings() {
@@ -243,7 +246,7 @@ export function createBlobStorage(settings, directory) {
       return remote();
     },
     async put(hash, bytes, mediaType) {
-      return (current.backend === "s3" ? remote() : file).put(hash, bytes, mediaType);
+      return (current.backend === 's3' ? remote() : file).put(hash, bytes, mediaType);
     },
     /**
      * Reads a blob from wherever its row says it is, which is the one thing
@@ -252,7 +255,7 @@ export function createBlobStorage(settings, directory) {
      */
     async open(row) {
       if (!HASH_PATTERN.test(row.hash)) return null;
-      const store = row.storage === "s3" ? remote() : row.storage === "file" ? file : null;
+      const store = row.storage === 's3' ? remote() : row.storage === 'file' ? file : null;
       if (!store) return null;
       try {
         return await store.open(row);
@@ -262,7 +265,7 @@ export function createBlobStorage(settings, directory) {
       }
     },
     async has(hash, location) {
-      const store = location === "s3" ? remote() : file;
+      const store = location === 's3' ? remote() : file;
       return store.has(hash);
     },
   };
@@ -278,14 +281,14 @@ export function createBlobStorage(settings, directory) {
  */
 export async function saveBlob(db, storage, bytes, mediaType) {
   const buffer = Buffer.from(bytes);
-  const hash = createHash("sha256").update(buffer).digest("hex");
+  const hash = createHash('sha256').update(buffer).digest('hex');
   const location = await storage.put(hash, buffer, mediaType);
   db.prepare(
     `INSERT INTO blobs (hash, size_bytes, media_type, storage, object_key)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(hash) DO UPDATE SET
        size_bytes=excluded.size_bytes, media_type=excluded.media_type,
-       storage=excluded.storage, object_key=excluded.object_key`,
+       storage=excluded.storage, object_key=excluded.object_key`
   ).run(hash, buffer.length, mediaType || null, location.storage, location.key);
   return hash;
 }
@@ -295,7 +298,7 @@ export function blobCounts(db) {
   const rows = db
     .prepare(
       `SELECT storage AS location, COUNT(*) AS count, COALESCE(SUM(size_bytes), 0) AS bytes
-       FROM blobs GROUP BY storage`,
+       FROM blobs GROUP BY storage`
     )
     .all();
   const counts = {
@@ -326,15 +329,15 @@ export async function migrateBlobs(db, storage, backend, onProgress = () => {}) 
   if (!BACKENDS.includes(backend)) {
     throw new Error(`Unbekannter Speicherort: ${backend}`);
   }
-  const target = backend === "s3" ? storage.requireRemote() : storage.file;
+  const target = backend === 's3' ? storage.requireRemote() : storage.file;
   const rows = db
     .prepare(
       `SELECT hash, size_bytes, media_type, storage, object_key
-       FROM blobs ORDER BY hash`,
+       FROM blobs ORDER BY hash`
     )
     .all();
   const totals = { total: rows.length, copied: 0, alreadyThere: 0, failures: [] };
-  const report = (hash) =>
+  const report = hash =>
     onProgress({
       ...totals,
       hash,
@@ -351,14 +354,14 @@ export async function migrateBlobs(db, storage, backend, onProgress = () => {}) 
     try {
       if (!(await target.has(row.hash))) {
         const object = await storage.open(row);
-        if (!object) throw new Error("Quelldatei fehlt im Ausgangsspeicher");
+        if (!object) throw new Error('Quelldatei fehlt im Ausgangsspeicher');
         const bytes = Buffer.from(await new Response(object.body).arrayBuffer());
         await target.put(row.hash, bytes, row.media_type);
       }
-      db.prepare("UPDATE blobs SET storage=?, object_key=? WHERE hash=?").run(
+      db.prepare('UPDATE blobs SET storage=?, object_key=? WHERE hash=?').run(
         backend,
         target.locationKey(row.hash),
-        row.hash,
+        row.hash
       );
       totals.copied++;
     } catch (error) {
